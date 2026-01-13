@@ -126,7 +126,7 @@ else:
         st.write("---")
         cq, _ = st.columns([1,5])
         with cq:
-            qr = qrcode.make("https://agroinsumostock.streamlit.app")
+            qr = qrcode.make("https://stockagroinsumos2.streamlit.app")
             buf = BytesIO(); qr.save(buf, format="PNG")
             st.image(buf.getvalue(), caption="Acceso Móvil", width=120)
 
