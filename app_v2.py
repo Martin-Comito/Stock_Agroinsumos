@@ -35,7 +35,7 @@ st.markdown("""
 # GESTOR DE COOKIES
 cookie_manager = stx.CookieManager()
 
-#  VARIABLES DE SESIÓN 
+# VARIABLES DE SESIÓN
 if 'usuario_id' not in st.session_state: st.session_state.usuario_id = None
 if 'usuario_nombre' not in st.session_state: st.session_state.usuario_nombre = None
 if 'usuario_sucursal' not in st.session_state: st.session_state.usuario_sucursal = None
@@ -100,15 +100,16 @@ else:
     U_NOMBRE = st.session_state.usuario_nombre
     U_SUCURSAL = st.session_state.usuario_sucursal
 
-    # SIDEBAR
+    #  SIDEBAR 
     with st.sidebar:
         st.title("🚜")
         st.write(f"👤 **{U_NOMBRE}**")
         st.info(f"📍 **{U_SUCURSAL}**")
         if st.button("Cerrar Sesión", type="secondary"):
             cookie_manager.delete('agro_user')
-            st.session_state.usuario_id = None
-            st.session_state.usuario_nombre = None
+            st.session_state.clear() 
+            st.toast("Cerrando sesión...", icon="🔒")
+            time.sleep(2) 
             st.rerun()
 
     # MENÚ PRINCIPAL
@@ -147,7 +148,6 @@ else:
         st.write("---")
         cq, _ = st.columns([1,5])
         with cq:
-            # QR 
             qr = qrcode.make("https://stockagroinsumos2.streamlit.app")
             buf = BytesIO(); qr.save(buf, format="PNG")
             st.image(buf.getvalue(), caption="Acceso Móvil", width=120)
@@ -164,7 +164,7 @@ else:
         u_map = {u['nombre_sector']: u['id'] for u in ubics.data} if ubics.data else {}
 
         with st.container(border=True):
-            # 1. MOTIVO DINÁMICO
+            # MOTIVO DINÁMICO
             col_mot, col_det = st.columns(2)
             motivo_base = col_mot.selectbox("📋 Motivo", ["COMPRA PROVEEDOR", "DEVOLUCIÓN CLIENTE", "TRANSFERENCIA SUCURSAL"])
             
@@ -186,7 +186,7 @@ else:
                 if p_map: p_sel = c1.selectbox("Producto", list(p_map.keys())); prod_id = p_map[p_sel]['id']
                 else: es_nuevo = True
             
-            # 2. FORZADO DE MAYÚSCULAS
+            # INPUTS EN MAYÚSCULAS
             lote_input = c1.text_input("Lote").upper()
             senasa_input = c2.text_input("SENASA").upper()
             gtin_input = c2.text_input("GTIN").upper()
@@ -198,7 +198,6 @@ else:
             
             if st.button("GUARDAR INGRESO", type="primary"):
                 if lote_input and total_ingreso > 0 and ubic_id:
-                    # Construir motivo final con el detalle
                     motivo_final = f"{motivo_base}"
                     if detalle_origen: motivo_final += f" | {detalle_origen}"
 
@@ -220,12 +219,11 @@ else:
         with st.container(border=True):
             cli = st.text_input("Cliente / Destino").upper()
             if p_map:
-                # Buscador de productos
                 p_sel = st.selectbox("Buscar Producto", list(p_map.keys()))
                 lotes = supabase.table("lotes_stock").select("id, numero_lote, cantidad_actual, ubicaciones_internas(nombre_sector)").eq("producto_id", p_map[p_sel]).eq("sucursal_id", U_SUCURSAL).gt("cantidad_actual", 0).execute()
                 
                 if lotes.data:
-                    # 3. VISUALIZACIÓN DE UBICACIÓN 
+                    # SELECTOR DE LOTE Y UBICACIÓN
                     l_opts = {f"📍 {l['ubicaciones_internas']['nombre_sector']} | Lote: {l['numero_lote']} | Disp: {fmt(l['cantidad_actual'])}": l['id'] for l in lotes.data}
                     l_pick = st.selectbox("Seleccionar Lote y Ubicación", list(l_opts.keys()))
                     
@@ -241,7 +239,7 @@ else:
                             st.rerun()
                 else: st.warning("⚠️ Sin Stock")
 
-        # 4. CARRITO MEJORADO
+        # CARRITO CON BORRAR
         if st.session_state.carrito:
             st.write("---")
             st.subheader("🛒 Carrito")
@@ -302,7 +300,7 @@ else:
                                 st.success("🔄 Cruce OK"); st.rerun()
                             else: st.error("Lote inexistente.")
 
-    # STOCK
+    # STOCK 
     elif st.session_state.vista == "Stock":
         c_h, c_b = st.columns([4, 1])
         c_h.header("📊 Stock")
@@ -323,7 +321,7 @@ else:
                     data.append({"UBIC": i['ubicaciones_internas']['nombre_sector'], "PROD": nom, "LOTE": lot, "CANT": fmt(i['cantidad_actual']), "VENC": venc_str, "EST": est})
             st.dataframe(pd.DataFrame(data), use_container_width=True)
 
-    # ZAMPING
+    # ZAMPING 
     elif st.session_state.vista == "Zamping":
         c_h, c_b = st.columns([4, 1])
         c_h.header("🏗️ Reubicación")
