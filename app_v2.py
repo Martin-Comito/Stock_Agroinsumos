@@ -34,11 +34,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # GESTOR DE COOKIES
-@st.cache_resource
-def get_manager():
-    return stx.CookieManager()
-
-cookie_manager = get_manager()
+cookie_manager = stx.CookieManager()
 
 # VARIABLES DE SESIÓN
 if 'usuario_id' not in st.session_state: st.session_state.usuario_id = None
