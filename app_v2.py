@@ -29,13 +29,34 @@ st.markdown("""
     div[data-testid="stColumn"] button[kind="primary"] { width: 100%; background-color: #fbbf24 !important; color: #000000 !important; font-weight: 800; font-size: 16px; border: 2px solid #f59e0b; }
     div[data-testid="stColumn"] button[kind="secondary"] { background-color: #ffffff !important; color: #dc2626 !important; font-weight: 800; border: 2px solid #dc2626 !important; }
     div[data-baseweb="input"] input, div[data-baseweb="select"] { background-color: #ffffff !important; color: #000000 !important; font-weight: bold; font-size: 16px; }
+    
+    /* --- AJUSTE ESPECIAL PARA CELULARES --- */
+    @media only screen and (max-width: 768px) {
+        /* Centrar el bloque principal */
+        .block-container {
+            padding-left: 2rem !important;
+            padding-right: 2rem !important;
+            margin: 0 auto !important;
+        }
+        /* Centrar textos y columnas */
+        div[data-testid="stColumn"] {
+            text-align: center !important;
+            margin-bottom: 15px !important;
+        }
+        /* Ajustar iconos al centro */
+        .card-icon, .card-title, .card-desc {
+            text-align: center !important;
+            margin-left: auto;
+            margin-right: auto;
+        }
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# GESTOR DE COOKIES
+# GESTOR DE COOKIES 
 cookie_manager = stx.CookieManager()
 
-# VARIABLES DE SESIÓN
+# VARIABLES DE SESIÓN 
 if 'usuario_id' not in st.session_state: st.session_state.usuario_id = None
 if 'usuario_nombre' not in st.session_state: st.session_state.usuario_nombre = None
 if 'usuario_sucursal' not in st.session_state: st.session_state.usuario_sucursal = None
@@ -72,7 +93,7 @@ def calculadora_stock(key_prefix):
     c3.metric("Total Real", f"{fmt(total)}")
     return total, cant_bultos, contenido
 
-#  PANTALLA DE LOGIN
+# PANTALLA DE LOGIN
 if st.session_state.usuario_id is None:
     c_log1, c_log2, c_log3 = st.columns([1,2,1])
     with c_log2:
@@ -103,21 +124,16 @@ else:
     U_NOMBRE = st.session_state.usuario_nombre
     U_SUCURSAL = st.session_state.usuario_sucursal
 
-    # SIDEBAR 
+    # SIDEBAR
     with st.sidebar:
         st.title("🚜")
         st.write(f"👤 **{U_NOMBRE}**")
-        st.info(f"📍 **{U_SUCURSAL}**")
+        st.info(f" **{U_SUCURSAL}**")
         if st.button("Cerrar Sesión", type="secondary"):
-            try:
-                cookie_manager.delete('agro_user')
-            except:
-                pass 
+            try: cookie_manager.delete('agro_user')
+            except: pass
             
-            # ACTIVA BANDERA PARA BLOQUEAR AUTO-LOGIN
             st.session_state.logout_triggered = True 
-            
-            # LIMPIA DATOS
             st.session_state.usuario_id = None
             st.session_state.usuario_nombre = None
             st.session_state.vista = "Menu Principal"
@@ -235,7 +251,7 @@ else:
                 lotes = supabase.table("lotes_stock").select("id, numero_lote, cantidad_actual, ubicaciones_internas(nombre_sector)").eq("producto_id", p_map[p_sel]).eq("sucursal_id", U_SUCURSAL).gt("cantidad_actual", 0).execute()
                 
                 if lotes.data:
-                    l_opts = {f"📍 {l['ubicaciones_internas']['nombre_sector']} | Lote: {l['numero_lote']} | Disp: {fmt(l['cantidad_actual'])}": l['id'] for l in lotes.data}
+                    l_opts = {f"{l['ubicaciones_internas']['nombre_sector']} | Lote: {l['numero_lote']} | Disp: {fmt(l['cantidad_actual'])}": l['id'] for l in lotes.data}
                     l_pick = st.selectbox("Seleccionar Lote y Ubicación", list(l_opts.keys()))
                     total_pedir, bultos, unitario = calculadora_stock("ord")
                     
@@ -263,35 +279,49 @@ else:
                 if crear_orden_pendiente(st.session_state.carrito, cli, U_NOMBRE, U_SUCURSAL):
                     st.success("Pedido Enviado"); st.session_state.carrito = []; time.sleep(1); st.rerun()
 
-    # VALIDACIÓN
+    #  VALIDACIÓN
     elif st.session_state.vista == "Validacion":
         c_h, c_b = st.columns([4, 1])
         c_h.header("📦 Validación")
         if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
 
-        pend = supabase.table("historial_movimientos").select("*, productos(nombre_comercial), lotes_stock(numero_lote)").eq("estado_confirmacion", "PENDIENTE").eq("sucursal_id", U_SUCURSAL).execute()
+        pend = supabase.table("historial_movimientos").select("*, productos(nombre_comercial), lotes_stock(numero_lote, ubicaciones_internas(nombre_sector))").eq("estado_confirmacion", "PENDIENTE").eq("sucursal_id", U_SUCURSAL).execute()
         if not pend.data: st.info("✅ Nada pendiente.")
         else:
             ped_id = st.selectbox("Pedido", list(set([i['id_pedido_referencia'] for i in pend.data])))
             items = [i for i in pend.data if i['id_pedido_referencia'] == ped_id]
             for item in items:
+                nombre_prod = item['productos']['nombre_comercial']
+                lote_txt = item['lotes_stock']['numero_lote']
+                
+                ubic_txt = "SIN UBICACIÓN"
+                if item['lotes_stock'] and item['lotes_stock'].get('ubicaciones_internas'):
+                    ubic_txt = item['lotes_stock']['ubicaciones_internas']['nombre_sector']
+
+                cant_ped = abs(item['cantidad_afectada'])
+
                 with st.container(border=True):
-                    st.subheader(item['productos']['nombre_comercial'])
-                    cant_ped = abs(item['cantidad_afectada'])
-                    st.info(f"Sacar **{fmt(cant_ped)}** del Lote **{item['lotes_stock']['numero_lote']}**")
+                    st.markdown(f"IR A: {ubic_txt}")
+                    st.markdown(f"**Producto:** {nombre_prod}")
+                    st.info(f"👉 Sacar **{fmt(cant_ped)}** | Lote: **{lote_txt}**")
+                    
                     c1, c2 = st.columns(2)
-                    l_real = c1.text_input("LOTE FÍSICO", key=f"lr_{item['id']}").upper()
+                    l_real = c1.text_input("Confirmar Lote Físico", key=f"lr_{item['id']}").upper()
+                    
                     st.caption("Validar Cantidad Real:")
                     total_real_calc, b, u = calculadora_stock(f"val_{item['id']}")
+                    
                     if st.button("VALIDAR", key=f"v_{item['id']}", type="primary"):
-                        l_esp = item['lotes_stock']['numero_lote'].upper()
+                        l_esp = lote_txt.upper()
                         c_real = total_real_calc
+                        
                         if l_real == l_esp and c_real == cant_ped:
                             confirmar_despacho_real(item['id'], item['lote_id'], c_real, U_NOMBRE)
                             st.success("✅ OK"); st.rerun()
                         elif l_real == l_esp and c_real < cant_ped: st.session_state[f"parcial_{item['id']}"] = True 
                         elif l_real == l_esp and c_real > cant_ped: st.error(f"⛔ Error: Exceso")
                         elif l_real != l_esp: st.session_state[f"cruce_{item['id']}"] = True
+                    
                     if st.session_state.get(f"parcial_{item['id']}", False):
                         st.warning(f"⚠️ Parcial: {fmt(total_real_calc)} de {fmt(cant_ped)}.")
                         if st.button("CONFIRMAR PARCIAL", key=f"si_p_{item['id']}"):
@@ -327,7 +357,7 @@ else:
                     data.append({"UBIC": i['ubicaciones_internas']['nombre_sector'], "PROD": nom, "LOTE": lot, "CANT": fmt(i['cantidad_actual']), "VENC": venc_str, "EST": est})
             st.dataframe(pd.DataFrame(data), use_container_width=True)
 
-    # ZAMPING
+    # ZAMPING 
     elif st.session_state.vista == "Zamping":
         c_h, c_b = st.columns([4, 1])
         c_h.header("🏗️ Reubicación")
