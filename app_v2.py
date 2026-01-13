@@ -96,7 +96,7 @@ if st.session_state.usuario_id is None:
                     st.session_state.usuario_sucursal = user.get('sucursal_asignada', 'CARMEN')
                     
                     # 2. Guardar Cookie
-                    cookie_manager.set('agro_user', user['username'], key="set_cookie", expires_at=datetime.now().add(days=30))
+                    cookie_manager.set('agro_user', user['username'], key="set_cookie", expires_at=datetime.now() + timedelta(days=30))
                     
                     st.toast(f"Hola {user['nombre_completo']}", icon="👋")
                     time.sleep(1) 
