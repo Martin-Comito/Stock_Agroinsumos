@@ -41,10 +41,11 @@ if 'usuario_nombre' not in st.session_state: st.session_state.usuario_nombre = N
 if 'usuario_sucursal' not in st.session_state: st.session_state.usuario_sucursal = None
 if 'vista' not in st.session_state: st.session_state.vista = "Menu Principal"
 if 'carrito' not in st.session_state: st.session_state.carrito = []
+if 'logout_triggered' not in st.session_state: st.session_state.logout_triggered = False 
 
 # LÓGICA DE AUTO-LOGIN
-if st.session_state.usuario_id is None:
-    time.sleep(0.5) 
+if st.session_state.usuario_id is None and not st.session_state.logout_triggered:
+    time.sleep(0.2)
     cookie_user = cookie_manager.get('agro_user')
     if cookie_user:
         try:
@@ -88,6 +89,8 @@ if st.session_state.usuario_id is None:
                     st.session_state.usuario_id = user['id']
                     st.session_state.usuario_nombre = user['nombre_completo']
                     st.session_state.usuario_sucursal = user.get('sucursal_asignada', 'CARMEN')
+                    st.session_state.logout_triggered = False 
+                    
                     cookie_manager.set('agro_user', user['username'], key="set_cookie", expires_at=datetime.now() + timedelta(days=30))
                     st.toast(f"Hola {user['nombre_completo']}", icon="👋")
                     time.sleep(1)
@@ -95,21 +98,32 @@ if st.session_state.usuario_id is None:
                 else:
                     st.error("❌ Credenciales inválidas")
 
-#  APLICACIÓN PRINCIPAL
+# APLICACIÓN PRINCIPAL
 else:
     U_NOMBRE = st.session_state.usuario_nombre
     U_SUCURSAL = st.session_state.usuario_sucursal
 
-    #  SIDEBAR 
+    # SIDEBAR 
     with st.sidebar:
         st.title("🚜")
         st.write(f"👤 **{U_NOMBRE}**")
         st.info(f"📍 **{U_SUCURSAL}**")
         if st.button("Cerrar Sesión", type="secondary"):
-            cookie_manager.delete('agro_user')
-            st.session_state.clear() 
+            try:
+                cookie_manager.delete('agro_user')
+            except:
+                pass 
+            
+            # ACTIVA BANDERA PARA BLOQUEAR AUTO-LOGIN
+            st.session_state.logout_triggered = True 
+            
+            # LIMPIA DATOS
+            st.session_state.usuario_id = None
+            st.session_state.usuario_nombre = None
+            st.session_state.vista = "Menu Principal"
+            
             st.toast("Cerrando sesión...", icon="🔒")
-            time.sleep(2) 
+            time.sleep(1) 
             st.rerun()
 
     # MENÚ PRINCIPAL
@@ -164,7 +178,6 @@ else:
         u_map = {u['nombre_sector']: u['id'] for u in ubics.data} if ubics.data else {}
 
         with st.container(border=True):
-            # MOTIVO DINÁMICO
             col_mot, col_det = st.columns(2)
             motivo_base = col_mot.selectbox("📋 Motivo", ["COMPRA PROVEEDOR", "DEVOLUCIÓN CLIENTE", "TRANSFERENCIA SUCURSAL"])
             
@@ -186,7 +199,6 @@ else:
                 if p_map: p_sel = c1.selectbox("Producto", list(p_map.keys())); prod_id = p_map[p_sel]['id']
                 else: es_nuevo = True
             
-            # INPUTS EN MAYÚSCULAS
             lote_input = c1.text_input("Lote").upper()
             senasa_input = c2.text_input("SENASA").upper()
             gtin_input = c2.text_input("GTIN").upper()
@@ -223,10 +235,8 @@ else:
                 lotes = supabase.table("lotes_stock").select("id, numero_lote, cantidad_actual, ubicaciones_internas(nombre_sector)").eq("producto_id", p_map[p_sel]).eq("sucursal_id", U_SUCURSAL).gt("cantidad_actual", 0).execute()
                 
                 if lotes.data:
-                    # SELECTOR DE LOTE Y UBICACIÓN
                     l_opts = {f"📍 {l['ubicaciones_internas']['nombre_sector']} | Lote: {l['numero_lote']} | Disp: {fmt(l['cantidad_actual'])}": l['id'] for l in lotes.data}
                     l_pick = st.selectbox("Seleccionar Lote y Ubicación", list(l_opts.keys()))
-                    
                     total_pedir, bultos, unitario = calculadora_stock("ord")
                     
                     if st.button("AGREGAR AL PEDIDO"):
@@ -239,7 +249,6 @@ else:
                             st.rerun()
                 else: st.warning("⚠️ Sin Stock")
 
-        # CARRITO CON BORRAR
         if st.session_state.carrito:
             st.write("---")
             st.subheader("🛒 Carrito")
@@ -272,10 +281,8 @@ else:
                     st.info(f"Sacar **{fmt(cant_ped)}** del Lote **{item['lotes_stock']['numero_lote']}**")
                     c1, c2 = st.columns(2)
                     l_real = c1.text_input("LOTE FÍSICO", key=f"lr_{item['id']}").upper()
-                    
                     st.caption("Validar Cantidad Real:")
                     total_real_calc, b, u = calculadora_stock(f"val_{item['id']}")
-                    
                     if st.button("VALIDAR", key=f"v_{item['id']}", type="primary"):
                         l_esp = item['lotes_stock']['numero_lote'].upper()
                         c_real = total_real_calc
@@ -285,7 +292,6 @@ else:
                         elif l_real == l_esp and c_real < cant_ped: st.session_state[f"parcial_{item['id']}"] = True 
                         elif l_real == l_esp and c_real > cant_ped: st.error(f"⛔ Error: Exceso")
                         elif l_real != l_esp: st.session_state[f"cruce_{item['id']}"] = True
-                    
                     if st.session_state.get(f"parcial_{item['id']}", False):
                         st.warning(f"⚠️ Parcial: {fmt(total_real_calc)} de {fmt(cant_ped)}.")
                         if st.button("CONFIRMAR PARCIAL", key=f"si_p_{item['id']}"):
@@ -300,7 +306,7 @@ else:
                                 st.success("🔄 Cruce OK"); st.rerun()
                             else: st.error("Lote inexistente.")
 
-    # STOCK 
+    # STOCK
     elif st.session_state.vista == "Stock":
         c_h, c_b = st.columns([4, 1])
         c_h.header("📊 Stock")
@@ -321,7 +327,7 @@ else:
                     data.append({"UBIC": i['ubicaciones_internas']['nombre_sector'], "PROD": nom, "LOTE": lot, "CANT": fmt(i['cantidad_actual']), "VENC": venc_str, "EST": est})
             st.dataframe(pd.DataFrame(data), use_container_width=True)
 
-    # ZAMPING 
+    # ZAMPING
     elif st.session_state.vista == "Zamping":
         c_h, c_b = st.columns([4, 1])
         c_h.header("🏗️ Reubicación")
