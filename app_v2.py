@@ -152,7 +152,7 @@ else:
     with st.sidebar:
         st.title("🚜")
         st.write(f"👤 **{U_NOMBRE}**")
-        st.info(f"📍 **{U_SUCURSAL}**")
+        st.info(f"**{U_SUCURSAL}**")
         if st.button("Cerrar Sesión", type="secondary"):
             try: cookie_manager.delete('agro_user')
             except: pass
