@@ -23,40 +23,56 @@ st.markdown("""
     h1, h2, h3 { font-family: 'Poppins', sans-serif; color: #fbbf24 !important; text-align: center; text-shadow: 0px 0px 10px rgba(0,0,0,0.5); }
     label, .stMarkdown p, .stText, .stCheckbox label, div[data-testid="stMetricValue"] { color: #ffffff !important; font-weight: 600 !important; font-size: 1.1rem !important; }
     div[data-testid="stVerticalBlockBorderWrapper"] > div { background-color: #1e293b; border: 2px solid #475569; border-radius: 12px; }
+    
+    /* Iconos y Textos de Tarjetas */
     .card-icon { font-size: 40px; display: block; margin-bottom: 10px; }
     .card-title { font-size: 18px; font-weight: bold; color: white; display: block; margin-bottom: 5px; }
     .card-desc { font-size: 14px; color: #cbd5e1; display: block; margin-bottom: 15px; }
+    
+    /* Botones Generales */
     div[data-testid="stColumn"] button[kind="primary"] { width: 100%; background-color: #fbbf24 !important; color: #000000 !important; font-weight: 800; font-size: 16px; border: 2px solid #f59e0b; }
     div[data-testid="stColumn"] button[kind="secondary"] { background-color: #ffffff !important; color: #dc2626 !important; font-weight: 800; border: 2px solid #dc2626 !important; }
+    
+    /* Inputs */
     div[data-baseweb="input"] input, div[data-baseweb="select"] { background-color: #ffffff !important; color: #000000 !important; font-weight: bold; font-size: 16px; }
     
-    /* --- AJUSTE ESPECIAL PARA CELULARES --- */
+    /* --- AJUSTE ESPECIAL PARA CELULARES (RESPONSIVE) --- */
     @media only screen and (max-width: 768px) {
-        /* Centrar el bloque principal */
+        /* Centrar contenedor principal */
         .block-container {
-            padding-left: 2rem !important;
-            padding-right: 2rem !important;
-            margin: 0 auto !important;
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
         }
-        /* Centrar textos y columnas */
+        /* Centrar textos de las columnas */
         div[data-testid="stColumn"] {
             text-align: center !important;
-            margin-bottom: 15px !important;
+            margin-bottom: 20px !important;
         }
-        /* Ajustar iconos al centro */
+        /* Centrar Iconos y Títulos de Tarjetas */
         .card-icon, .card-title, .card-desc {
+            margin-left: auto !important;
+            margin-right: auto !important;
             text-align: center !important;
-            margin-left: auto;
-            margin-right: auto;
+        }
+        /* FUERZA BRUTA PARA CENTRAR BOTONES */
+        .stButton {
+            display: flex !important;
+            justify-content: center !important;
+            width: 100% !important;
+        }
+        .stButton > button {
+            width: 100% !important; /* Ocupar todo el ancho disponible */
+            display: block !important;
+            margin: 0 auto !important;
         }
     }
     </style>
     """, unsafe_allow_html=True)
 
-# GESTOR DE COOKIES 
+# GESTOR DE COOKIES
 cookie_manager = stx.CookieManager()
 
-# VARIABLES DE SESIÓN 
+# VARIABLES DE SESIÓN
 if 'usuario_id' not in st.session_state: st.session_state.usuario_id = None
 if 'usuario_nombre' not in st.session_state: st.session_state.usuario_nombre = None
 if 'usuario_sucursal' not in st.session_state: st.session_state.usuario_sucursal = None
@@ -93,7 +109,7 @@ def calculadora_stock(key_prefix):
     c3.metric("Total Real", f"{fmt(total)}")
     return total, cant_bultos, contenido
 
-# PANTALLA DE LOGIN
+#  PANTALLA DE LOGIN
 if st.session_state.usuario_id is None:
     c_log1, c_log2, c_log3 = st.columns([1,2,1])
     with c_log2:
@@ -119,16 +135,16 @@ if st.session_state.usuario_id is None:
                 else:
                     st.error("❌ Credenciales inválidas")
 
-# APLICACIÓN PRINCIPAL
+#  APLICACIÓN PRINCIPAL
 else:
     U_NOMBRE = st.session_state.usuario_nombre
     U_SUCURSAL = st.session_state.usuario_sucursal
 
-    # SIDEBAR
+    # SIDEBAR 
     with st.sidebar:
         st.title("🚜")
         st.write(f"👤 **{U_NOMBRE}**")
-        st.info(f" **{U_SUCURSAL}**")
+        st.info(f"**{U_SUCURSAL}**")
         if st.button("Cerrar Sesión", type="secondary"):
             try: cookie_manager.delete('agro_user')
             except: pass
@@ -194,6 +210,7 @@ else:
         u_map = {u['nombre_sector']: u['id'] for u in ubics.data} if ubics.data else {}
 
         with st.container(border=True):
+            # MOTIVO DINÁMICO
             col_mot, col_det = st.columns(2)
             motivo_base = col_mot.selectbox("📋 Motivo", ["COMPRA PROVEEDOR", "DEVOLUCIÓN CLIENTE", "TRANSFERENCIA SUCURSAL"])
             
@@ -215,6 +232,7 @@ else:
                 if p_map: p_sel = c1.selectbox("Producto", list(p_map.keys())); prod_id = p_map[p_sel]['id']
                 else: es_nuevo = True
             
+            # INPUTS EN MAYÚSCULAS
             lote_input = c1.text_input("Lote").upper()
             senasa_input = c2.text_input("SENASA").upper()
             gtin_input = c2.text_input("GTIN").upper()
@@ -253,6 +271,7 @@ else:
                 if lotes.data:
                     l_opts = {f"{l['ubicaciones_internas']['nombre_sector']} | Lote: {l['numero_lote']} | Disp: {fmt(l['cantidad_actual'])}": l['id'] for l in lotes.data}
                     l_pick = st.selectbox("Seleccionar Lote y Ubicación", list(l_opts.keys()))
+                    
                     total_pedir, bultos, unitario = calculadora_stock("ord")
                     
                     if st.button("AGREGAR AL PEDIDO"):
@@ -279,7 +298,7 @@ else:
                 if crear_orden_pendiente(st.session_state.carrito, cli, U_NOMBRE, U_SUCURSAL):
                     st.success("Pedido Enviado"); st.session_state.carrito = []; time.sleep(1); st.rerun()
 
-    #  VALIDACIÓN
+    # VALIDACIÓN
     elif st.session_state.vista == "Validacion":
         c_h, c_b = st.columns([4, 1])
         c_h.header("📦 Validación")
@@ -357,7 +376,7 @@ else:
                     data.append({"UBIC": i['ubicaciones_internas']['nombre_sector'], "PROD": nom, "LOTE": lot, "CANT": fmt(i['cantidad_actual']), "VENC": venc_str, "EST": est})
             st.dataframe(pd.DataFrame(data), use_container_width=True)
 
-    # ZAMPING 
+    # ZAMPING
     elif st.session_state.vista == "Zamping":
         c_h, c_b = st.columns([4, 1])
         c_h.header("🏗️ Reubicación")
