@@ -15,55 +15,63 @@ from database.queries import (
 
 st.set_page_config(page_title="AgroCheck Pro V2", page_icon="🚜", layout="wide", initial_sidebar_state="collapsed")
 
-# CSS ALTO CONTRASTE
+# CSS 
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Inter:wght@400;600&display=swap');
     .stApp { background: #0f172a; color: #ffffff; font-family: 'Inter', sans-serif; }
     h1, h2, h3 { font-family: 'Poppins', sans-serif; color: #fbbf24 !important; text-align: center; text-shadow: 0px 0px 10px rgba(0,0,0,0.5); }
     label, .stMarkdown p, .stText, .stCheckbox label, div[data-testid="stMetricValue"] { color: #ffffff !important; font-weight: 600 !important; font-size: 1.1rem !important; }
-    div[data-testid="stVerticalBlockBorderWrapper"] > div { background-color: #1e293b; border: 2px solid #475569; border-radius: 12px; }
     
-    /* Iconos y Textos de Tarjetas */
+    /* Estilo de Tarjetas (Contenedores con borde) */
+    div[data-testid="stVerticalBlockBorderWrapper"] > div { 
+        background-color: #1e293b; 
+        border: 2px solid #475569; 
+        border-radius: 12px; 
+    }
+    
+    /* Iconos y Textos */
     .card-icon { font-size: 40px; display: block; margin-bottom: 10px; }
     .card-title { font-size: 18px; font-weight: bold; color: white; display: block; margin-bottom: 5px; }
     .card-desc { font-size: 14px; color: #cbd5e1; display: block; margin-bottom: 15px; }
     
-    /* Botones Generales */
+    /* Botones PC (Default) */
     div[data-testid="stColumn"] button[kind="primary"] { width: 100%; background-color: #fbbf24 !important; color: #000000 !important; font-weight: 800; font-size: 16px; border: 2px solid #f59e0b; }
     div[data-testid="stColumn"] button[kind="secondary"] { background-color: #ffffff !important; color: #dc2626 !important; font-weight: 800; border: 2px solid #dc2626 !important; }
     
     /* Inputs */
     div[data-baseweb="input"] input, div[data-baseweb="select"] { background-color: #ffffff !important; color: #000000 !important; font-weight: bold; font-size: 16px; }
     
-    /* --- AJUSTE ESPECIAL PARA CELULARES (RESPONSIVE) --- */
+    /* --- AJUSTE AGRESIVO PARA CELULARES --- */
     @media only screen and (max-width: 768px) {
-        /* Centrar contenedor principal */
-        .block-container {
-            padding-left: 1rem !important;
-            padding-right: 1rem !important;
-        }
-        /* Centrar textos de las columnas */
-        div[data-testid="stColumn"] {
+        
+        /* 1. Centrar texto dentro de las tarjetas */
+        div[data-testid="stVerticalBlockBorderWrapper"] {
             text-align: center !important;
-            margin-bottom: 20px !important;
+            align-items: center !important;
         }
-        /* Centrar Iconos y Títulos de Tarjetas */
+        
+        /* 2. Forzar alineación de iconos y títulos */
         .card-icon, .card-title, .card-desc {
             margin-left: auto !important;
             margin-right: auto !important;
             text-align: center !important;
+            display: block !important;
         }
-        /* FUERZA BRUTA PARA CENTRAR BOTONES */
+
+        /* 3. BOTONES EN MÓVIL: ANCHO TOTAL Y CENTRADOS */
+        div[data-testid="stVerticalBlockBorderWrapper"] button {
+            width: 100% !important;
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+        
+        /* 4. Ajuste del contenedor principal del botón */
         .stButton {
+            width: 100% !important;
             display: flex !important;
             justify-content: center !important;
-            width: 100% !important;
-        }
-        .stButton > button {
-            width: 100% !important; /* Ocupar todo el ancho disponible */
-            display: block !important;
-            margin: 0 auto !important;
         }
     }
     </style>
@@ -140,11 +148,11 @@ else:
     U_NOMBRE = st.session_state.usuario_nombre
     U_SUCURSAL = st.session_state.usuario_sucursal
 
-    # SIDEBAR 
+    # SIDEBAR
     with st.sidebar:
         st.title("🚜")
         st.write(f"👤 **{U_NOMBRE}**")
-        st.info(f"**{U_SUCURSAL}**")
+        st.info(f"📍 **{U_SUCURSAL}**")
         if st.button("Cerrar Sesión", type="secondary"):
             try: cookie_manager.delete('agro_user')
             except: pass
@@ -210,7 +218,6 @@ else:
         u_map = {u['nombre_sector']: u['id'] for u in ubics.data} if ubics.data else {}
 
         with st.container(border=True):
-            # MOTIVO DINÁMICO
             col_mot, col_det = st.columns(2)
             motivo_base = col_mot.selectbox("📋 Motivo", ["COMPRA PROVEEDOR", "DEVOLUCIÓN CLIENTE", "TRANSFERENCIA SUCURSAL"])
             
@@ -232,7 +239,6 @@ else:
                 if p_map: p_sel = c1.selectbox("Producto", list(p_map.keys())); prod_id = p_map[p_sel]['id']
                 else: es_nuevo = True
             
-            # INPUTS EN MAYÚSCULAS
             lote_input = c1.text_input("Lote").upper()
             senasa_input = c2.text_input("SENASA").upper()
             gtin_input = c2.text_input("GTIN").upper()
@@ -271,7 +277,6 @@ else:
                 if lotes.data:
                     l_opts = {f"{l['ubicaciones_internas']['nombre_sector']} | Lote: {l['numero_lote']} | Disp: {fmt(l['cantidad_actual'])}": l['id'] for l in lotes.data}
                     l_pick = st.selectbox("Seleccionar Lote y Ubicación", list(l_opts.keys()))
-                    
                     total_pedir, bultos, unitario = calculadora_stock("ord")
                     
                     if st.button("AGREGAR AL PEDIDO"):
@@ -391,7 +396,7 @@ else:
             if st.button("MOVER", type="primary"):
                 if mover_pallet(opts[sel], u_map[dest], U_NOMBRE): st.success("✅ Hecho"); st.rerun()
 
-    # HISTORIAL
+    # HISTORIAL 
     elif st.session_state.vista == "Historial":
         c_h, c_b = st.columns([4, 1])
         c_h.header("📜 Centro de Historial")
