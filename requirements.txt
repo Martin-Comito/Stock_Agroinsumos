@@ -4,3 +4,4 @@ pandas
 qrcode
 xlsxwriter
 pytz
+extra-streamlit-components
