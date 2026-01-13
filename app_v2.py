@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import qrcode
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, timedelta  
 import pytz
 import extra_streamlit_components as stx 
 import time
