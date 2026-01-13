@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import qrcode
 from io import BytesIO
-from datetime import datetime, timedelta  
+from datetime import datetime, timedelta
 import pytz
 import extra_streamlit_components as stx 
 import time
@@ -29,26 +29,24 @@ st.markdown("""
     div[data-testid="stColumn"] button[kind="primary"] { width: 100%; background-color: #fbbf24 !important; color: #000000 !important; font-weight: 800; font-size: 16px; border: 2px solid #f59e0b; }
     div[data-testid="stColumn"] button[kind="secondary"] { background-color: #ffffff !important; color: #dc2626 !important; font-weight: 800; border: 2px solid #dc2626 !important; }
     div[data-baseweb="input"] input, div[data-baseweb="select"] { background-color: #ffffff !important; color: #000000 !important; font-weight: bold; font-size: 16px; }
-    .login-box { padding: 40px; border: 2px solid #fbbf24; border-radius: 20px; background-color: #1e293b; max-width: 400px; margin: auto; text-align: center; }
     </style>
     """, unsafe_allow_html=True)
 
 # GESTOR DE COOKIES
 cookie_manager = stx.CookieManager()
 
-# VARIABLES DE SESIÓN
+#  VARIABLES DE SESIÓN 
 if 'usuario_id' not in st.session_state: st.session_state.usuario_id = None
 if 'usuario_nombre' not in st.session_state: st.session_state.usuario_nombre = None
 if 'usuario_sucursal' not in st.session_state: st.session_state.usuario_sucursal = None
 if 'vista' not in st.session_state: st.session_state.vista = "Menu Principal"
 if 'carrito' not in st.session_state: st.session_state.carrito = []
 
-# LÓGICA DE AUTO-LOGIN (PERSISTENCIA)
-# Si no está logueado en RAM, busca la cookie
+# LÓGICA DE AUTO-LOGIN
 if st.session_state.usuario_id is None:
+    time.sleep(0.5) 
     cookie_user = cookie_manager.get('agro_user')
     if cookie_user:
-        # Si existe la galleta, validamos contra la base de datos (por seguridad)
         try:
             res = supabase.table("usuarios").select("*").eq("username", cookie_user).execute()
             if res.data:
@@ -56,15 +54,14 @@ if st.session_state.usuario_id is None:
                 st.session_state.usuario_id = user_data['id']
                 st.session_state.usuario_nombre = user_data['nombre_completo']
                 st.session_state.usuario_sucursal = user_data.get('sucursal_asignada', 'CARMEN')
-                st.toast("Sesión restaurada automáticamene", icon="🔄")
-        except:
-            pass 
+                st.rerun()
+        except: pass
 
 def navegar_a(v): st.session_state.vista = v; st.rerun()
 def tarjeta(icono, titulo, desc): st.markdown(f"""<span class="card-icon">{icono}</span><span class="card-title">{titulo}</span><span class="card-desc">{desc}</span>""", unsafe_allow_html=True)
 def fmt(num): return f"{float(num):g}"
 
-#  HELPER: CALCULADORA UNIFICADA
+# HELPER: CALCULADORA UNIFICADA
 def calculadora_stock(key_prefix):
     st.markdown("Calculadora de Unidades")
     c1, c2, c3 = st.columns([1,1,1])
@@ -74,15 +71,13 @@ def calculadora_stock(key_prefix):
     c3.metric("Total Real", f"{fmt(total)}")
     return total, cant_bultos, contenido
 
-# PANTALLA DE LOGIN
+#  PANTALLA DE LOGIN
 if st.session_state.usuario_id is None:
     c_log1, c_log2, c_log3 = st.columns([1,2,1])
     with c_log2:
         st.write(""); st.write("")
         st.markdown("<h1 style='font-size: 60px;'>🚜</h1>", unsafe_allow_html=True)
         st.title("AgroCheck Pro")
-        st.markdown("<p style='text-align:center; color:#94a3b8;'>Gestión Inteligente de Stock</p>", unsafe_allow_html=True)
-        
         with st.container(border=True):
             user_input = st.text_input("Usuario", placeholder="Ej: admin")
             pass_input = st.text_input("Contraseña", type="password")
@@ -90,16 +85,12 @@ if st.session_state.usuario_id is None:
             if st.button("INGRESAR AL SISTEMA", type="primary"):
                 user = verificar_login(user_input, pass_input)
                 if user:
-                    # 1. Guardar en Sesión (RAM)
                     st.session_state.usuario_id = user['id']
                     st.session_state.usuario_nombre = user['nombre_completo']
                     st.session_state.usuario_sucursal = user.get('sucursal_asignada', 'CARMEN')
-                    
-                    # 2. Guardar Cookie
                     cookie_manager.set('agro_user', user['username'], key="set_cookie", expires_at=datetime.now() + timedelta(days=30))
-                    
                     st.toast(f"Hola {user['nombre_completo']}", icon="👋")
-                    time.sleep(1) 
+                    time.sleep(1)
                     st.rerun()
                 else:
                     st.error("❌ Credenciales inválidas")
@@ -109,21 +100,15 @@ else:
     U_NOMBRE = st.session_state.usuario_nombre
     U_SUCURSAL = st.session_state.usuario_sucursal
 
-    # SIDEBAR CON LOGOUT
+    # SIDEBAR
     with st.sidebar:
         st.title("🚜")
         st.write(f"👤 **{U_NOMBRE}**")
         st.info(f"📍 **{U_SUCURSAL}**")
-        
-        # BOTÓN CERRAR SESIÓN
         if st.button("Cerrar Sesión", type="secondary"):
-            # 1. Borrar Cookie
             cookie_manager.delete('agro_user')
-            # 2. Borrar Sesión RAM
             st.session_state.usuario_id = None
             st.session_state.usuario_nombre = None
-            st.toast("Cerrando sesión...", icon="🔒")
-            time.sleep(1)
             st.rerun()
 
     # MENÚ PRINCIPAL
@@ -135,15 +120,15 @@ else:
         c1, c2, c3 = st.columns(3)
         with c1:
             with st.container(border=True):
-                tarjeta("📥", "INGRESOS", "Alta de mercadería")
+                tarjeta("📥", "INGRESOS", "Alta")
                 if st.button("INGRESAR", key="b1", type="primary"): navegar_a("Ingresos")
         with c2:
             with st.container(border=True):
-                tarjeta("📝", "ÓRDENES", "Armar Pedidos")
+                tarjeta("📝", "ÓRDENES", "Pedidos")
                 if st.button("CREAR ORDEN", key="b2", type="primary"): navegar_a("Ordenes")
         with c3:
             with st.container(border=True):
-                tarjeta("📦", "VALIDACIÓN", "Control de carga")
+                tarjeta("📦", "VALIDACIÓN", "Control")
                 if st.button("VALIDAR", key="b3", type="primary"): navegar_a("Validacion")
         st.write("")
         c4, c5, c6 = st.columns(3)
@@ -153,7 +138,7 @@ else:
                 if st.button("VER STOCK", key="b4", type="primary"): navegar_a("Stock")
         with c5:
             with st.container(border=True):
-                tarjeta("🏗️", "ZAMPING", "Movimiento interno")
+                tarjeta("🏗️", "ZAMPING", "Mover")
                 if st.button("REUBICAR", key="b5", type="primary"): navegar_a("Zamping")
         with c6:
             with st.container(border=True):
@@ -170,7 +155,7 @@ else:
     # INGRESOS
     elif st.session_state.vista == "Ingresos":
         c_h, c_b = st.columns([4, 1])
-        c_h.header("📥 Ingreso de Mercadería")
+        c_h.header("📥 Ingreso")
         if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
 
         prods = supabase.table("productos").select("id, nombre_comercial, categoria").order("nombre_comercial").execute()
@@ -179,7 +164,18 @@ else:
         u_map = {u['nombre_sector']: u['id'] for u in ubics.data} if ubics.data else {}
 
         with st.container(border=True):
-            motivo = st.selectbox("📋 Tipo de Operación", ["COMPRA PROVEEDOR", "DEVOLUCIÓN CLIENTE", "TRANSFERENCIA SUCURSAL"])
+            # 1. MOTIVO DINÁMICO
+            col_mot, col_det = st.columns(2)
+            motivo_base = col_mot.selectbox("📋 Motivo", ["COMPRA PROVEEDOR", "DEVOLUCIÓN CLIENTE", "TRANSFERENCIA SUCURSAL"])
+            
+            detalle_origen = ""
+            if motivo_base == "DEVOLUCIÓN CLIENTE":
+                detalle_origen = col_det.text_input("👤 Nombre del Cliente (Devolución)").upper()
+            elif motivo_base == "TRANSFERENCIA SUCURSAL":
+                detalle_origen = col_det.text_input("🏢 Sucursal de Origen").upper()
+            elif motivo_base == "COMPRA PROVEEDOR":
+                detalle_origen = col_det.text_input("🏭 Proveedor (Opcional)").upper()
+
             st.write("---")
             es_nuevo = st.checkbox("🆕 ¿Es Producto Nuevo?")
             c1, c2, c3 = st.columns(3)
@@ -190,9 +186,10 @@ else:
                 if p_map: p_sel = c1.selectbox("Producto", list(p_map.keys())); prod_id = p_map[p_sel]['id']
                 else: es_nuevo = True
             
-            lote = c1.text_input("Lote").upper()
-            senasa = c2.text_input("SENASA").upper()
-            gtin = c2.text_input("GTIN").upper()
+            # 2. FORZADO DE MAYÚSCULAS
+            lote_input = c1.text_input("Lote").upper()
+            senasa_input = c2.text_input("SENASA").upper()
+            gtin_input = c2.text_input("GTIN").upper()
             venc = c3.date_input("Vencimiento")
             ubic_id = u_map[c3.selectbox("Ubicación", list(u_map.keys()))] if u_map else None
             
@@ -200,17 +197,21 @@ else:
             total_ingreso, bultos, unitario = calculadora_stock("ing")
             
             if st.button("GUARDAR INGRESO", type="primary"):
-                if lote and total_ingreso > 0 and ubic_id:
+                if lote_input and total_ingreso > 0 and ubic_id:
+                    # Construir motivo final con el detalle
+                    motivo_final = f"{motivo_base}"
+                    if detalle_origen: motivo_final += f" | {detalle_origen}"
+
                     if es_nuevo and nom: prod_id = crear_producto(nom, cat)
                     if prod_id:
-                        if registrar_ingreso(prod_id, lote, total_ingreso, ubic_id, U_NOMBRE, venc, senasa, gtin, motivo, U_SUCURSAL):
-                            st.success(f"✅ Ingreso guardado en {U_SUCURSAL}"); navegar_a("Menu Principal")
-                else: st.error("Datos incompletos")
+                        if registrar_ingreso(prod_id, lote_input, total_ingreso, ubic_id, U_NOMBRE, venc, senasa_input, gtin_input, motivo_final, U_SUCURSAL):
+                            st.success(f"✅ Ingreso OK: {motivo_final}"); time.sleep(1); navegar_a("Menu Principal")
+                else: st.error("Faltan datos obligatorios")
 
     # ÓRDENES
     elif st.session_state.vista == "Ordenes":
         c_h, c_b = st.columns([4, 1])
-        c_h.header("📝 Generar Orden")
+        c_h.header("📝 Armar Pedido")
         if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
 
         prods = supabase.table("productos").select("id, nombre_comercial").execute()
@@ -219,13 +220,15 @@ else:
         with st.container(border=True):
             cli = st.text_input("Cliente / Destino").upper()
             if p_map:
-                # BUSCADOR
-                p_sel = st.selectbox("Buscar Producto (Escriba para filtrar)", list(p_map.keys()))
+                # Buscador de productos
+                p_sel = st.selectbox("Buscar Producto", list(p_map.keys()))
                 lotes = supabase.table("lotes_stock").select("id, numero_lote, cantidad_actual, ubicaciones_internas(nombre_sector)").eq("producto_id", p_map[p_sel]).eq("sucursal_id", U_SUCURSAL).gt("cantidad_actual", 0).execute()
                 
                 if lotes.data:
-                    l_opts = {f"Lote: {l['numero_lote']} | {l['ubicaciones_internas']['nombre_sector']} ({fmt(l['cantidad_actual'])})": l['id'] for l in lotes.data}
-                    l_pick = st.selectbox("Lote Sugerido", list(l_opts.keys()))
+                    # 3. VISUALIZACIÓN DE UBICACIÓN 
+                    l_opts = {f"📍 {l['ubicaciones_internas']['nombre_sector']} | Lote: {l['numero_lote']} | Disp: {fmt(l['cantidad_actual'])}": l['id'] for l in lotes.data}
+                    l_pick = st.selectbox("Seleccionar Lote y Ubicación", list(l_opts.keys()))
+                    
                     total_pedir, bultos, unitario = calculadora_stock("ord")
                     
                     if st.button("AGREGAR AL PEDIDO"):
@@ -236,22 +239,22 @@ else:
                                 "detalle_bultos": f"Ped: {fmt(bultos)} x {fmt(unitario)}"
                             })
                             st.rerun()
-                else: st.warning("⚠️ Sin Stock en esta sucursal")
+                else: st.warning("⚠️ Sin Stock")
 
-        # CARRITO CON BOTÓN DE BORRAR
+        # 4. CARRITO MEJORADO
         if st.session_state.carrito:
             st.write("---")
-            st.subheader("🛒 Carrito de Pedido")
+            st.subheader("🛒 Carrito")
             for i, item in enumerate(st.session_state.carrito):
                 c_txt, c_del = st.columns([5,1])
-                c_txt.info(f"{item['nombre']} | Cant: {fmt(item['cantidad'])} | {item['detalle_bultos']}")
+                c_txt.info(f"{item['nombre']} | {item['detalle_bultos']} | Total: {fmt(item['cantidad'])}")
                 if c_del.button("🗑️", key=f"del_{i}"):
                     st.session_state.carrito.pop(i)
                     st.rerun()
 
-            if st.button("CONFIRMAR Y ENVIAR A GALPÓN", type="primary"):
+            if st.button("CONFIRMAR Y ENVIAR", type="primary"):
                 if crear_orden_pendiente(st.session_state.carrito, cli, U_NOMBRE, U_SUCURSAL):
-                    st.success("Enviado"); st.session_state.carrito = []; st.rerun()
+                    st.success("Pedido Enviado"); st.session_state.carrito = []; time.sleep(1); st.rerun()
 
     # VALIDACIÓN
     elif st.session_state.vista == "Validacion":
@@ -260,7 +263,6 @@ else:
         if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
 
         pend = supabase.table("historial_movimientos").select("*, productos(nombre_comercial), lotes_stock(numero_lote)").eq("estado_confirmacion", "PENDIENTE").eq("sucursal_id", U_SUCURSAL).execute()
-        
         if not pend.data: st.info("✅ Nada pendiente.")
         else:
             ped_id = st.selectbox("Pedido", list(set([i['id_pedido_referencia'] for i in pend.data])))
@@ -270,9 +272,9 @@ else:
                     st.subheader(item['productos']['nombre_comercial'])
                     cant_ped = abs(item['cantidad_afectada'])
                     st.info(f"Sacar **{fmt(cant_ped)}** del Lote **{item['lotes_stock']['numero_lote']}**")
-                    
                     c1, c2 = st.columns(2)
                     l_real = c1.text_input("LOTE FÍSICO", key=f"lr_{item['id']}").upper()
+                    
                     st.caption("Validar Cantidad Real:")
                     total_real_calc, b, u = calculadora_stock(f"val_{item['id']}")
                     
@@ -283,9 +285,9 @@ else:
                             confirmar_despacho_real(item['id'], item['lote_id'], c_real, U_NOMBRE)
                             st.success("✅ OK"); st.rerun()
                         elif l_real == l_esp and c_real < cant_ped: st.session_state[f"parcial_{item['id']}"] = True 
-                        elif l_real == l_esp and c_real > cant_ped: st.error(f"⛔ Error: Sacas MÁS de lo pedido.")
+                        elif l_real == l_esp and c_real > cant_ped: st.error(f"⛔ Error: Exceso")
                         elif l_real != l_esp: st.session_state[f"cruce_{item['id']}"] = True
-
+                    
                     if st.session_state.get(f"parcial_{item['id']}", False):
                         st.warning(f"⚠️ Parcial: {fmt(total_real_calc)} de {fmt(cant_ped)}.")
                         if st.button("CONFIRMAR PARCIAL", key=f"si_p_{item['id']}"):
@@ -300,7 +302,7 @@ else:
                                 st.success("🔄 Cruce OK"); st.rerun()
                             else: st.error("Lote inexistente.")
 
-    # STOCK 
+    # STOCK
     elif st.session_state.vista == "Stock":
         c_h, c_b = st.columns([4, 1])
         c_h.header("📊 Stock")
@@ -336,12 +338,11 @@ else:
             if st.button("MOVER", type="primary"):
                 if mover_pallet(opts[sel], u_map[dest], U_NOMBRE): st.success("✅ Hecho"); st.rerun()
 
-    # HISTORIAL 
+    # HISTORIAL
     elif st.session_state.vista == "Historial":
         c_h, c_b = st.columns([4, 1])
         c_h.header("📜 Centro de Historial")
         if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
-        
         with st.expander("🛠️ Gestión de Productos (Maestro)"):
             all_prods = supabase.table("productos").select("id, nombre_comercial, categoria").order("nombre_comercial").execute()
             if all_prods.data:
@@ -352,9 +353,8 @@ else:
                 new_cat = ce2.text_input("Nueva Categoría", value=p_dict[p_sel_edit].get('categoria', '') or "").upper()
                 if st.button("GUARDAR CAMBIOS EN MAESTRO", type="primary"):
                     if editar_producto(p_dict[p_sel_edit]['id'], new_name, new_cat): st.success(f"✅ Producto actualizado"); st.rerun()
-        
         st.write("---")
-        busqueda = st.text_input("🔍 Buscar en Historial", placeholder="Producto, Lote, Ingreso...").upper()
+        busqueda = st.text_input("🔍 Buscar en Historial", placeholder="Producto, Lote...").upper()
         h = supabase.table("historial_movimientos").select("id, fecha_hora, tipo_movimiento, cantidad_afectada, origen_destino, observaciones, lote_id, productos(nombre_comercial), lotes_stock(numero_lote, fecha_vencimiento, senasa_codigo, gtin_codigo)").eq("sucursal_id", U_SUCURSAL).order("fecha_hora", desc=True).limit(100).execute()
         if h.data:
             flat_data = []
@@ -368,7 +368,6 @@ else:
             df = pd.DataFrame(flat_data)
             if busqueda: df = df[df.apply(lambda row: row.astype(str).str.contains(busqueda, case=False).any(), axis=1)]
             st.dataframe(df.drop(columns=["ID", "RAW_DATA"]), use_container_width=True)
-            
             st.write("---")
             st.subheader("✏️ Corregir Transacción")
             opciones = {f"{r['PRODUCTO']} | Lote: {r['LOTE']} | {r['CANTIDAD']}": r['RAW_DATA'] for index, r in df.iterrows() if r['MOVIMIENTO'] == 'INGRESO'}
@@ -381,16 +380,7 @@ else:
                     nuevo_lote = c1.text_input("Corregir Lote", value=lote_actual).upper()
                     cant_actual = float(dato['cantidad_afectada'])
                     nueva_cant = c2.number_input("Corregir Cantidad Real", value=cant_actual)
-                    c3, c4 = st.columns(2)
-                    venc_actual = dato['lotes_stock'].get('fecha_vencimiento') if dato['lotes_stock'] else None
-                    try: f_obj = datetime.strptime(venc_actual, '%Y-%m-%d').date() if venc_actual else datetime.now().date()
-                    except: f_obj = datetime.now().date()
-                    nueva_venc = c3.date_input("Corregir Vencimiento", value=f_obj)
-                    sen_actual = dato['lotes_stock'].get('senasa_codigo', '') if dato['lotes_stock'] else ""
-                    gtin_actual = dato['lotes_stock'].get('gtin_codigo', '') if dato['lotes_stock'] else ""
-                    nuevo_senasa = c3.text_input("Corregir SENASA", value=sen_actual).upper()
-                    nuevo_gtin = c4.text_input("Corregir GTIN", value=gtin_actual).upper()
                     if st.form_submit_button("GUARDAR CORRECCIÓN TOTAL", type="primary"):
-                        if corregir_movimiento(dato['id'], dato['lote_id'], nuevo_lote, nueva_cant, nueva_venc, nuevo_senasa, nuevo_gtin, U_NOMBRE): st.success("✅ Todo actualizado."); st.rerun()
+                        if corregir_movimiento(dato['id'], dato['lote_id'], nuevo_lote, nueva_cant, dato['lotes_stock']['fecha_vencimiento'], dato['lotes_stock']['senasa_codigo'], dato['lotes_stock']['gtin_codigo'], U_NOMBRE): st.success("✅ Todo actualizado."); st.rerun()
             else: st.info("No hay ingresos editables.")
         else: st.info("Historial vacío.")
