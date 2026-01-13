@@ -2,5 +2,5 @@ streamlit
 supabase
 pandas
 qrcode
-pillow
 xlsxwriter
+pytz
