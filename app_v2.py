@@ -6,14 +6,12 @@ from datetime import datetime, timedelta
 import pytz
 import extra_streamlit_components as stx 
 import time
-
 from database.queries import (
     supabase, registrar_ingreso, crear_producto, editar_producto,
     crear_orden_pendiente, confirmar_despacho_real, mover_pallet,
     corregir_movimiento, verificar_login,
-    mover_a_guarda, baja_uso_interno  
+    mover_a_guarda, baja_uso_interno
 )
-
 st.set_page_config(page_title="AgroCheck Pro V2", page_icon="🚜", layout="wide", initial_sidebar_state="collapsed")
 
 # CSS 
