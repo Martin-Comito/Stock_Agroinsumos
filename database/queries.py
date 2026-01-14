@@ -156,7 +156,8 @@ def corregir_movimiento(movimiento_id, lote_id, nuevo_lote, nueva_cantidad, nuev
             }).eq("id", lote_id).execute()
         return True
     except: return False
-        def mover_a_guarda(lote_origen_id, cantidad_rotura, usuario):
+
+def mover_a_guarda(lote_origen_id, cantidad_rotura, usuario):
     """
     Resta cantidad del lote original (DISPONIBLE) y crea/suma a un lote en estado GUARDA.
     """
@@ -210,7 +211,7 @@ def corregir_movimiento(movimiento_id, lote_id, nuevo_lote, nueva_cantidad, nuev
                 "producto_id": lote_data['producto_id'],
                 "lote_id": lote_guarda_id,
                 "tipo_movimiento": "ROTURA_A_GUARDA",
-                "cantidad_afectada": cantidad_rotura, # Positivo porque entra a guarda
+                "cantidad_afectada": cantidad_rotura, 
                 "origen_destino": "MOVIMIENTO INTERNO",
                 "usuario_operador": usuario,
                 "estado_confirmacion": "TERMINADO",
