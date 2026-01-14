@@ -21,6 +21,7 @@ def ahora_arg():
 def verificar_login(usuario, password):
     """Devuelve el usuario si coincide pass y user"""
     try:
+        # Traemos todos los campos, incluido 'rol'
         res = supabase.table("usuarios").select("*").eq("username", usuario.strip()).eq("password", password.strip()).execute()
         if res.data: return res.data[0]
         return None
@@ -226,9 +227,6 @@ def mover_a_guarda(lote_origen_id, cantidad_rotura, usuario):
         return False
 
 def baja_uso_interno(lote_guarda_id, cantidad, motivo, usuario):
-    """
-    Da de baja stock que estaba en GUARDA para uso interno o descarte.
-    """
     try:
         lote = supabase.table("lotes_stock").select("cantidad_actual, producto_id, sucursal_id").eq("id", lote_guarda_id).execute()
         if not lote.data: return False
@@ -255,5 +253,82 @@ def baja_uso_interno(lote_guarda_id, cantidad, motivo, usuario):
             "fecha_hora": ahora_arg(),
             "sucursal_id": lote.data[0]['sucursal_id']
         }).execute()
+        return True
+    except: return False
+
+# FUNCIONES PARA AUDITORIA/RECONTEO
+
+def registrar_reconteo(producto_id, lote_id, cant_sistema, cant_fisica, motivo, usuario, sucursal):
+    try:
+        diferencia = cant_fisica - cant_sistema
+        supabase.table("reconteos").insert({
+            "producto_id": producto_id,
+            "lote_id": lote_id,
+            "sucursal_id": sucursal,
+            "usuario_solicitante": usuario,
+            "cantidad_sistema": cant_sistema,
+            "cantidad_fisica": cant_fisica,
+            "diferencia": diferencia,
+            "motivo": motivo,
+            "estado": "PENDIENTE",
+            "created_at": ahora_arg()
+        }).execute()
+        return True
+    except: return False
+
+def editar_reconteo_pendiente(reconteo_id, nueva_cant_fisica, cant_sistema, nuevo_motivo):
+    try:
+        nueva_diferencia = nueva_cant_fisica - cant_sistema
+        supabase.table("reconteos").update({
+            "cantidad_fisica": nueva_cant_fisica,
+            "diferencia": nueva_diferencia,
+            "motivo": nuevo_motivo,
+            "created_at": ahora_arg()
+        }).eq("id", reconteo_id).eq("estado", "PENDIENTE").execute()
+        return True
+    except: return False
+
+def aprobar_ajuste_stock(reconteo_id, admin_user):
+    try:
+        # 1. Obtener datos del reconteo
+        rec_res = supabase.table("reconteos").select("*").eq("id", reconteo_id).execute()
+        if not rec_res.data: return False
+        rec = rec_res.data[0]
+        
+        # 2. Actualizar Lote
+        supabase.table("lotes_stock").update({
+            "cantidad_actual": rec['cantidad_fisica'],
+            "ultima_actualizacion": ahora_arg()
+        }).eq("id", rec['lote_id']).execute()
+
+        # 3. Insertar Historial (Auditoría)
+        tipo = "AJUSTE_POSITIVO" if rec['diferencia'] > 0 else "AJUSTE_NEGATIVO"
+        supabase.table("historial_movimientos").insert({
+            "producto_id": rec['producto_id'],
+            "lote_id": rec['lote_id'],
+            "tipo_movimiento": tipo,
+            "cantidad_afectada": rec['diferencia'],
+            "origen_destino": "AUDITORIA INTERNA",
+            "usuario_operador": admin_user,
+            "estado_confirmacion": "TERMINADO",
+            "observaciones": f"Aprobado por {admin_user}. Solicitado por: {rec['usuario_solicitante']}. Motivo: {rec['motivo']}",
+            "fecha_hora": ahora_arg(),
+            "sucursal_id": rec['sucursal_id']
+        }).execute()
+
+        # 4. Cerrar Reconteo
+        supabase.table("reconteos").update({
+            "estado": "APROBADO",
+            "fecha_auditoria": ahora_arg()
+        }).eq("id", reconteo_id).execute()
+        
+        return True
+    except Exception as e:
+        print(e)
+        return False
+
+def rechazar_reconteo(reconteo_id):
+    try:
+        supabase.table("reconteos").update({"estado": "RECHAZADO"}).eq("id", reconteo_id).execute()
         return True
     except: return False
