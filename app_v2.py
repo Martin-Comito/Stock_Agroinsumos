@@ -10,7 +10,8 @@ import time
 from database.queries import (
     supabase, registrar_ingreso, crear_producto, editar_producto,
     crear_orden_pendiente, confirmar_despacho_real, mover_pallet,
-    corregir_movimiento, verificar_login
+    corregir_movimiento, verificar_login,
+    mover_a_guarda, baja_uso_interno  
 )
 
 st.set_page_config(page_title="AgroCheck Pro V2", page_icon="🚜", layout="wide", initial_sidebar_state="collapsed")
@@ -276,22 +277,42 @@ else:
             cli = st.text_input("Cliente / Destino").strip().upper()
             if p_map:
                 p_sel = st.selectbox("Buscar Producto", list(p_map.keys()))
-                lotes = supabase.table("lotes_stock").select("id, numero_lote, cantidad_actual, ubicaciones_internas(nombre_sector)").eq("producto_id", p_map[p_sel]).eq("sucursal_id", U_SUCURSAL).gt("cantidad_actual", 0).execute()
+                # FILTRAMOS SOLO LO DISPONIBLE (NO GUARDA)
+                lotes = supabase.table("lotes_stock").select("id, numero_lote, cantidad_actual, ubicaciones_internas(nombre_sector)")\
+                    .eq("producto_id", p_map[p_sel]).eq("sucursal_id", U_SUCURSAL).eq("estado_calidad", "DISPONIBLE").gt("cantidad_actual", 0).execute()
                 
                 if lotes.data:
+                    # Mapa de stock real para validar
+                    stock_real_map = {l['id']: float(l['cantidad_actual']) for l in lotes.data}
+                    
                     l_opts = {f"{l['ubicaciones_internas']['nombre_sector']} | Lote: {l['numero_lote']} | Disp: {fmt(l['cantidad_actual'])}": l['id'] for l in lotes.data}
-                    l_pick = st.selectbox("Seleccionar Lote y Ubicación", list(l_opts.keys()))
+                    l_pick_str = st.selectbox("Seleccionar Lote y Ubicación", list(l_opts.keys()))
+                    lote_seleccionado_id = l_opts[l_pick_str]
+                    
                     total_pedir, bultos, unitario = calculadora_stock("ord")
                     
-                    if st.button("AGREGAR AL PEDIDO"):
-                        if total_pedir > 0:
+                    # LÓGICA DE ALERTA DE EXCESO 
+                    disp_real = stock_real_map.get(lote_seleccionado_id, 0)
+                    exceso = total_pedir > disp_real
+                    confirmacion_exceso = False
+
+                    if total_pedir > 0:
+                        if exceso:
+                            st.warning(f"⚠️ ATENCIÓN: Estás pidiendo {fmt(total_pedir)}, pero en sistema figuran {fmt(disp_real)}.")
+                            st.caption("¿Confirmas que quieres agregarlo de todas formas? (Quedará stock negativo)")
+                            confirmacion_exceso = st.checkbox("✅ Sí, agregar igual.")
+                        
+                        # Habilitar botón solo si NO hay exceso, O SI hay exceso y se confirmó
+                        boton_habilitado = (not exceso) or (exceso and confirmacion_exceso)
+
+                        if st.button("AGREGAR AL PEDIDO", disabled=not boton_habilitado, type="primary" if boton_habilitado else "secondary"):
                             st.session_state.carrito.append({
                                 "producto_id": p_map[p_sel], "nombre": p_sel, 
-                                "cantidad": total_pedir, "lote_id": l_opts[l_pick], 
+                                "cantidad": total_pedir, "lote_id": lote_seleccionado_id, 
                                 "detalle_bultos": f"Ped: {fmt(bultos)} x {fmt(unitario)}"
                             })
                             st.rerun()
-                else: st.warning("⚠️ Sin Stock")
+                else: st.warning("⚠️ Sin Stock Disponible")
 
         if st.session_state.carrito:
             st.write("---")
@@ -342,7 +363,7 @@ else:
                     total_real_calc, b, u = calculadora_stock(f"val_{item['id']}")
                     
                     if st.button("VALIDAR", key=f"v_{item['id']}", type="primary"):
-                        # Aseguramos también que el lote esperado esté limpio
+                        # Asegura también que el lote esperado esté limpio
                         l_esp = lote_txt.strip().upper()
                         c_real = total_real_calc
                         
@@ -367,27 +388,93 @@ else:
                                 st.success("🔄 Cruce OK"); st.rerun()
                             else: st.error("Lote inexistente.")
 
-    # STOCK
+    # STOCK (MODIFICADO: CON PESTAÑAS PARA ROTURA Y BAJA)
     elif st.session_state.vista == "Stock":
         c_h, c_b = st.columns([4, 1])
         c_h.header("📊 Stock")
         if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
-        # .strip().upper()
+        
+        # Filtro Global
         filtro = st.text_input("🔍 Buscar...").strip().upper()
-        res = supabase.table("lotes_stock").select("*, productos(nombre_comercial), ubicaciones_internas(nombre_sector)").eq("sucursal_id", U_SUCURSAL).gt("cantidad_actual", 0).execute()
-        if res.data:
-            data = []
-            hoy = datetime.now().date()
-            for i in res.data:
-                nom = i['productos']['nombre_comercial'].upper(); lot = i['numero_lote'].upper()
-                if filtro in nom or filtro in lot:
-                    venc_str = i['fecha_vencimiento']; venc = datetime.strptime(venc_str, '%Y-%m-%d').date() if venc_str else None
-                    dias = (venc - hoy).days if venc else 999
-                    est = "🟢 OK"
-                    if dias < 30: est = "🔴 CRÍTICO"
-                    elif dias < 90: est = "🟡 ALERTA"
-                    data.append({"UBIC": i['ubicaciones_internas']['nombre_sector'], "PROD": nom, "LOTE": lot, "CANT": fmt(i['cantidad_actual']), "VENC": venc_str, "EST": est})
-            st.dataframe(pd.DataFrame(data), use_container_width=True)
+        
+        # PESTAÑAS PARA ORGANIZAR GESTIÓN DE STOCK
+        tab1, tab2, tab3 = st.tabs(["📋 Listado General", "🚨 Reportar Rotura", "🗑️ Baja Uso Interno"])
+
+        # TAB 1: LISTADO (MUESTRA TODO)
+        with tab1:
+            res = supabase.table("lotes_stock").select("*, productos(nombre_comercial), ubicaciones_internas(nombre_sector)").eq("sucursal_id", U_SUCURSAL).gt("cantidad_actual", 0).execute()
+            if res.data:
+                data = []
+                hoy = datetime.now().date()
+                for i in res.data:
+                    nom = i['productos']['nombre_comercial'].upper(); lot = i['numero_lote'].upper()
+                    if filtro in nom or filtro in lot:
+                        venc_str = i['fecha_vencimiento']; venc = datetime.strptime(venc_str, '%Y-%m-%d').date() if venc_str else None
+                        dias = (venc - hoy).days if venc else 999
+                        
+                        # SEMÁFORO VISUAL + ESTADO
+                        calidad = i.get('estado_calidad', 'DISPONIBLE')
+                        est = "🟢 OK"
+                        if calidad == "GUARDA": est = "🟠 EN GUARDA"
+                        elif dias < 30: est = "🔴 VENCE PRONTO"
+                        elif dias < 90: est = "🟡 ALERTA VENC"
+                        
+                        data.append({
+                            "UBIC": i['ubicaciones_internas']['nombre_sector'], 
+                            "PROD": nom, 
+                            "LOTE": lot, 
+                            "CANT": fmt(i['cantidad_actual']), 
+                            "ESTADO": est, 
+                            "VENC": venc_str
+                        })
+                st.dataframe(pd.DataFrame(data), use_container_width=True)
+            else:
+                st.info("Sin stock.")
+
+        # TAB 2: REPORTAR ROTURA (DISPONIBLE -> GUARDA)
+        with tab2:
+            st.caption("Mover mercadería de 'Disponible' a 'Guarda'. Seguirá figurando en stock pero diferenciada.")
+            # Solo trae lotes DISPONIBLES
+            lotes_sanos = supabase.table("lotes_stock").select("id, numero_lote, cantidad_actual, productos(nombre_comercial)")\
+                .eq("sucursal_id", U_SUCURSAL).eq("estado_calidad", "DISPONIBLE").gt("cantidad_actual", 0).execute()
+            
+            if lotes_sanos.data:
+                opts_sanos = {f"{x['productos']['nombre_comercial']} | Lote: {x['numero_lote']} | Disp: {fmt(x['cantidad_actual'])}": x for x in lotes_sanos.data}
+                sel_sano = st.selectbox("Seleccionar Producto Sano", list(opts_sanos.keys()))
+                dato_sano = opts_sanos[sel_sano]
+                
+                c1, c2 = st.columns(2)
+                cant_rotura = c1.number_input("Cantidad Rota", min_value=0.0, max_value=float(dato_sano['cantidad_actual']), step=1.0)
+                
+                if st.button("CONFIRMAR ROTURA (A GUARDA)", type="primary"):
+                    if cant_rotura > 0:
+                        if mover_a_guarda(dato_sano['id'], cant_rotura, U_NOMBRE):
+                            st.success("✅ Rotura registrada. Mercadería movida a GUARDA."); time.sleep(1.5); st.rerun()
+                        else: st.error("Error al mover.")
+            else: st.info("No hay stock disponible para reportar roturas.")
+
+        # TAB 3: BAJA USO INTERNO (GUARDA -> BAJA DEFINITIVA)
+        with tab3:
+            st.caption("Dar de baja definitiva mercadería que está en 'Guarda' (Uso interno, Parque, Descarte).")
+            # Solo trae lotes en GUARDA
+            lotes_guarda = supabase.table("lotes_stock").select("id, numero_lote, cantidad_actual, productos(nombre_comercial)")\
+                .eq("sucursal_id", U_SUCURSAL).eq("estado_calidad", "GUARDA").gt("cantidad_actual", 0).execute()
+            
+            if lotes_guarda.data:
+                opts_guarda = {f"{x['productos']['nombre_comercial']} | Lote: {x['numero_lote']} | En Guarda: {fmt(x['cantidad_actual'])}": x for x in lotes_guarda.data}
+                sel_guarda = st.selectbox("Seleccionar Producto en Guarda", list(opts_guarda.keys()))
+                dato_guarda = opts_guarda[sel_guarda]
+                
+                c1, c2 = st.columns(2)
+                cant_baja = c1.number_input("Cantidad a dar de Baja", min_value=0.0, max_value=float(dato_guarda['cantidad_actual']), step=1.0)
+                motivo_baja = c2.text_input("Motivo (Ej: Uso en Parque)")
+                
+                if st.button("CONFIRMAR BAJA DEFINITIVA"):
+                    if cant_baja > 0 and motivo_baja:
+                        if baja_uso_interno(dato_guarda['id'], cant_baja, motivo_baja, U_NOMBRE):
+                            st.success("✅ Baja realizada correctamente."); time.sleep(1.5); st.rerun()
+                    else: st.error("Ingrese cantidad y motivo.")
+            else: st.info("No hay mercadería en Guarda.")
 
     # ZAMPING
     elif st.session_state.vista == "Zamping":
