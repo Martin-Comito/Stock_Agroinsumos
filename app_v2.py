@@ -6,7 +6,13 @@ from datetime import datetime, timedelta
 import pytz
 import extra_streamlit_components as stx 
 import time
-from database.queries import supabase, registrar_ingreso, crear_producto, editar_producto, crear_orden_pendiente, confirmar_despacho_real, mover_pallet, corregir_movimiento, verificar_login, mover_a_guarda, baja_uso_interno
+from database.queries import (
+    supabase, registrar_ingreso, crear_producto, editar_producto, 
+    crear_orden_pendiente, confirmar_despacho_real, mover_pallet, 
+    corregir_movimiento, verificar_login, mover_a_guarda, baja_uso_interno,
+    registrar_reconteo, editar_reconteo_pendiente, aprobar_ajuste_stock, rechazar_reconteo
+)
+
 st.set_page_config(page_title="AgroCheck Pro V2", page_icon="🚜", layout="wide", initial_sidebar_state="collapsed")
 
 # CSS 
@@ -78,6 +84,7 @@ cookie_manager = stx.CookieManager()
 if 'usuario_id' not in st.session_state: st.session_state.usuario_id = None
 if 'usuario_nombre' not in st.session_state: st.session_state.usuario_nombre = None
 if 'usuario_sucursal' not in st.session_state: st.session_state.usuario_sucursal = None
+if 'usuario_rol' not in st.session_state: st.session_state.usuario_rol = None # NUEVO
 if 'vista' not in st.session_state: st.session_state.vista = "Menu Principal"
 if 'carrito' not in st.session_state: st.session_state.carrito = []
 if 'logout_triggered' not in st.session_state: st.session_state.logout_triggered = False 
@@ -94,6 +101,7 @@ if st.session_state.usuario_id is None and not st.session_state.logout_triggered
                 st.session_state.usuario_id = user_data['id']
                 st.session_state.usuario_nombre = user_data['nombre_completo']
                 st.session_state.usuario_sucursal = user_data.get('sucursal_asignada', 'CARMEN')
+                st.session_state.usuario_rol = user_data.get('rol', 'OPERARIO').upper()
                 st.rerun()
         except: pass
 
@@ -128,6 +136,7 @@ if st.session_state.usuario_id is None:
                     st.session_state.usuario_id = user['id']
                     st.session_state.usuario_nombre = user['nombre_completo']
                     st.session_state.usuario_sucursal = user.get('sucursal_asignada', 'CARMEN')
+                    st.session_state.usuario_rol = user.get('rol', 'OPERARIO').upper()
                     st.session_state.logout_triggered = False 
                     
                     cookie_manager.set('agro_user', user['username'], key="set_cookie", expires_at=datetime.now() + timedelta(days=30))
@@ -141,11 +150,13 @@ if st.session_state.usuario_id is None:
 else:
     U_NOMBRE = st.session_state.usuario_nombre
     U_SUCURSAL = st.session_state.usuario_sucursal
+    U_ROL = st.session_state.usuario_rol
 
     # SIDEBAR
     with st.sidebar:
         st.title("🚜")
         st.write(f"👤 **{U_NOMBRE}**")
+        st.caption(f"Rol: {U_ROL}") # Mostrar Rol
         st.info(f"**{U_SUCURSAL}**")
         if st.button("Cerrar Sesión", type="secondary"):
             try: cookie_manager.delete('agro_user')
@@ -154,6 +165,7 @@ else:
             st.session_state.logout_triggered = True 
             st.session_state.usuario_id = None
             st.session_state.usuario_nombre = None
+            st.session_state.usuario_rol = None
             st.session_state.vista = "Menu Principal"
             
             st.toast("Cerrando sesión...", icon="🔒")
@@ -166,6 +178,8 @@ else:
         st.title("🚜 AgroCheck Pro V2")
         st.subheader(f"Depósito: {U_SUCURSAL} | {fecha_arg}")
         st.write("---")
+        
+        # FILA 1: Común para todos
         c1, c2, c3 = st.columns(3)
         with c1:
             with st.container(border=True):
@@ -176,23 +190,41 @@ else:
                 tarjeta("📝", "ÓRDENES", "Pedidos")
                 if st.button("CREAR ORDEN", key="b2", type="primary"): navegar_a("Ordenes")
         with c3:
+            # Nuevo Botón RECONTEO (Auditoría Cíclica)
             with st.container(border=True):
-                tarjeta("📦", "VALIDACIÓN", "Control")
-                if st.button("VALIDAR", key="b3", type="primary"): navegar_a("Validacion")
+                tarjeta("🔍", "RECONTEO", "Control")
+                if st.button("CONTAR", key="b_recount", type="primary"): navegar_a("Reconteo")
+
         st.write("")
         c4, c5, c6 = st.columns(3)
         with c4:
             with st.container(border=True):
                 tarjeta("📊", "STOCK", "Semáforo")
                 if st.button("VER STOCK", key="b4", type="primary"): navegar_a("Stock")
+        
+        # FILA 2: Diferenciada por ROL
         with c5:
-            with st.container(border=True):
-                tarjeta("🏗️", "ZAMPING", "Mover")
-                if st.button("REUBICAR", key="b5", type="primary"): navegar_a("Zamping")
+            # Si es ADMIN ve "Aprobaciones", si es Depósito ve "Validación"
+            if U_ROL == 'ADMIN':
+                with st.container(border=True):
+                    tarjeta("👮", "APROBAR", "Auditoría")
+                    if st.button("AUDITAR", key="b5_admin", type="secondary"): navegar_a("Aprobaciones")
+            else:
+                with st.container(border=True):
+                    tarjeta("🏗️", "ZAMPING", "Mover")
+                    if st.button("REUBICAR", key="b5_zamp", type="primary"): navegar_a("Zamping")
+
         with c6:
-            with st.container(border=True):
-                tarjeta("📜", "HISTORIAL", "Auditoría")
-                if st.button("VER HISTORIAL", key="b6", type="primary"): navegar_a("Historial")
+            if U_ROL == 'ADMIN':
+                with st.container(border=True):
+                    tarjeta("📜", "HISTORIAL", "Auditoría")
+                    if st.button("VER HISTORIAL", key="b6", type="primary"): navegar_a("Historial")
+            else:
+                # Para operarios, ponemos Validación en el 6to lugar o lo que prefieras
+                with st.container(border=True):
+                    tarjeta("📦", "VALIDACIÓN", "Salidas")
+                    if st.button("VALIDAR", key="b6_val", type="primary"): navegar_a("Validacion")
+        
         st.write("---")
         cq, _ = st.columns([1,5])
         with cq:
@@ -217,7 +249,6 @@ else:
             
             detalle_origen = ""
             if motivo_base == "DEVOLUCIÓN CLIENTE":
-                #  .strip().upper()
                 detalle_origen = col_det.text_input("👤 Nombre del Cliente (Devolución)").strip().upper()
             elif motivo_base == "TRANSFERENCIA SUCURSAL":
                 detalle_origen = col_det.text_input("🏢 Sucursal de Origen").strip().upper()
@@ -229,13 +260,11 @@ else:
             c1, c2, c3 = st.columns(3)
             prod_id = None
             if es_nuevo:
-                # .strip().upper()
                 nom = c1.text_input("Nombre Nuevo").strip().upper(); cat = c1.text_input("Categoría").strip().upper()
             else:
                 if p_map: p_sel = c1.selectbox("Producto", list(p_map.keys())); prod_id = p_map[p_sel]['id']
                 else: es_nuevo = True
             
-            # .strip().upper() PARA EVITAR ERRORES DE LOTE
             lote_input = c1.text_input("Lote").strip().upper()
             senasa_input = c2.text_input("SENASA").strip().upper()
             gtin_input = c2.text_input("GTIN").strip().upper()
@@ -266,25 +295,20 @@ else:
         p_map = {p['nombre_comercial']: p['id'] for p in prods.data}
 
         with st.container(border=True):
-            # .strip().upper()
             cli = st.text_input("Cliente / Destino").strip().upper()
             if p_map:
                 p_sel = st.selectbox("Buscar Producto", list(p_map.keys()))
-                # FILTRAMOS SOLO LO DISPONIBLE (NO GUARDA)
                 lotes = supabase.table("lotes_stock").select("id, numero_lote, cantidad_actual, ubicaciones_internas(nombre_sector)")\
                     .eq("producto_id", p_map[p_sel]).eq("sucursal_id", U_SUCURSAL).eq("estado_calidad", "DISPONIBLE").gt("cantidad_actual", 0).execute()
                 
                 if lotes.data:
-                    # Mapa de stock real para validar
                     stock_real_map = {l['id']: float(l['cantidad_actual']) for l in lotes.data}
-                    
                     l_opts = {f"{l['ubicaciones_internas']['nombre_sector']} | Lote: {l['numero_lote']} | Disp: {fmt(l['cantidad_actual'])}": l['id'] for l in lotes.data}
                     l_pick_str = st.selectbox("Seleccionar Lote y Ubicación", list(l_opts.keys()))
                     lote_seleccionado_id = l_opts[l_pick_str]
                     
                     total_pedir, bultos, unitario = calculadora_stock("ord")
                     
-                    # LÓGICA DE ALERTA DE EXCESO 
                     disp_real = stock_real_map.get(lote_seleccionado_id, 0)
                     exceso = total_pedir > disp_real
                     confirmacion_exceso = False
@@ -295,7 +319,6 @@ else:
                             st.caption("¿Confirmas que quieres agregarlo de todas formas? (Quedará stock negativo)")
                             confirmacion_exceso = st.checkbox("✅ Sí, agregar igual.")
                         
-                        # Habilitar botón solo si NO hay exceso, O SI hay exceso y se confirmó
                         boton_habilitado = (not exceso) or (exceso and confirmacion_exceso)
 
                         if st.button("AGREGAR AL PEDIDO", disabled=not boton_habilitado, type="primary" if boton_habilitado else "secondary"):
@@ -348,15 +371,12 @@ else:
                     st.info(f"👉 Sacar **{fmt(cant_ped)}** | Lote: **{lote_txt}**")
                     
                     c1, c2 = st.columns(2)
-                    # CORRECCIÓN CLAVE AQUÍ
-                    # .strip().upper() para asegurar que no haya espacios fantasma
                     l_real = c1.text_input("Confirmar Lote Físico", key=f"lr_{item['id']}").strip().upper()
                     
                     st.caption("Validar Cantidad Real:")
                     total_real_calc, b, u = calculadora_stock(f"val_{item['id']}")
                     
                     if st.button("VALIDAR", key=f"v_{item['id']}", type="primary"):
-                        # Asegura también que el lote esperado esté limpio
                         l_esp = lote_txt.strip().upper()
                         c_real = total_real_calc
                         
@@ -381,19 +401,16 @@ else:
                                 st.success("🔄 Cruce OK"); st.rerun()
                             else: st.error("Lote inexistente.")
 
-    # STOCK (MODIFICADO: CON PESTAÑAS PARA ROTURA Y BAJA)
+    # STOCK
     elif st.session_state.vista == "Stock":
         c_h, c_b = st.columns([4, 1])
         c_h.header("📊 Stock")
         if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
         
-        # Filtro Global
         filtro = st.text_input("🔍 Buscar...").strip().upper()
-        
-        # PESTAÑAS PARA ORGANIZAR GESTIÓN DE STOCK
         tab1, tab2, tab3 = st.tabs(["📋 Listado General", "🚨 Reportar Rotura", "🗑️ Baja Uso Interno"])
 
-        # TAB 1: LISTADO (MUESTRA TODO)
+        # TAB 1: LISTADO
         with tab1:
             res = supabase.table("lotes_stock").select("*, productos(nombre_comercial), ubicaciones_internas(nombre_sector)").eq("sucursal_id", U_SUCURSAL).gt("cantidad_actual", 0).execute()
             if res.data:
@@ -405,7 +422,6 @@ else:
                         venc_str = i['fecha_vencimiento']; venc = datetime.strptime(venc_str, '%Y-%m-%d').date() if venc_str else None
                         dias = (venc - hoy).days if venc else 999
                         
-                        # SEMÁFORO VISUAL + ESTADO
                         calidad = i.get('estado_calidad', 'DISPONIBLE')
                         est = "🟢 OK"
                         if calidad == "GUARDA": est = "🟠 EN GUARDA"
@@ -421,13 +437,11 @@ else:
                             "VENC": venc_str
                         })
                 st.dataframe(pd.DataFrame(data), use_container_width=True)
-            else:
-                st.info("Sin stock.")
+            else: st.info("Sin stock.")
 
-        # TAB 2: REPORTAR ROTURA (DISPONIBLE -> GUARDA)
+        # TAB 2: ROTURA
         with tab2:
-            st.caption("Mover mercadería de 'Disponible' a 'Guarda'. Seguirá figurando en stock pero diferenciada.")
-            # Solo trae lotes DISPONIBLES
+            st.caption("Mover mercadería de 'Disponible' a 'Guarda'.")
             lotes_sanos = supabase.table("lotes_stock").select("id, numero_lote, cantidad_actual, productos(nombre_comercial)")\
                 .eq("sucursal_id", U_SUCURSAL).eq("estado_calidad", "DISPONIBLE").gt("cantidad_actual", 0).execute()
             
@@ -446,10 +460,9 @@ else:
                         else: st.error("Error al mover.")
             else: st.info("No hay stock disponible para reportar roturas.")
 
-        # TAB 3: BAJA USO INTERNO (GUARDA -> BAJA DEFINITIVA)
+        # TAB 3: BAJA
         with tab3:
-            st.caption("Dar de baja definitiva mercadería que está en 'Guarda' (Uso interno, Parque, Descarte).")
-            # Solo trae lotes en GUARDA
+            st.caption("Dar de baja definitiva mercadería que está en 'Guarda'.")
             lotes_guarda = supabase.table("lotes_stock").select("id, numero_lote, cantidad_actual, productos(nombre_comercial)")\
                 .eq("sucursal_id", U_SUCURSAL).eq("estado_calidad", "GUARDA").gt("cantidad_actual", 0).execute()
             
@@ -489,19 +502,21 @@ else:
         c_h, c_b = st.columns([4, 1])
         c_h.header("📜 Centro de Historial")
         if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
-        with st.expander("🛠️ Gestión de Productos (Maestro)"):
-            all_prods = supabase.table("productos").select("id, nombre_comercial, categoria").order("nombre_comercial").execute()
-            if all_prods.data:
-                p_dict = {p['nombre_comercial']: p for p in all_prods.data}
-                p_sel_edit = st.selectbox("Seleccionar Producto", list(p_dict.keys()), key="master_edit_sel")
-                ce1, ce2 = st.columns(2)
-                #.strip().upper()
-                new_name = ce1.text_input("Nuevo Nombre", value=p_sel_edit).strip().upper()
-                new_cat = ce2.text_input("Nueva Categoría", value=p_dict[p_sel_edit].get('categoria', '') or "").strip().upper()
-                if st.button("GUARDAR CAMBIOS EN MAESTRO", type="primary"):
-                    if editar_producto(p_dict[p_sel_edit]['id'], new_name, new_cat): st.success(f"✅ Producto actualizado"); st.rerun()
+        
+        # Solo Admin puede editar maestro
+        if U_ROL == 'ADMIN':
+            with st.expander("🛠️ Gestión de Productos (Maestro)"):
+                all_prods = supabase.table("productos").select("id, nombre_comercial, categoria").order("nombre_comercial").execute()
+                if all_prods.data:
+                    p_dict = {p['nombre_comercial']: p for p in all_prods.data}
+                    p_sel_edit = st.selectbox("Seleccionar Producto", list(p_dict.keys()), key="master_edit_sel")
+                    ce1, ce2 = st.columns(2)
+                    new_name = ce1.text_input("Nuevo Nombre", value=p_sel_edit).strip().upper()
+                    new_cat = ce2.text_input("Nueva Categoría", value=p_dict[p_sel_edit].get('categoria', '') or "").strip().upper()
+                    if st.button("GUARDAR CAMBIOS EN MAESTRO", type="primary"):
+                        if editar_producto(p_dict[p_sel_edit]['id'], new_name, new_cat): st.success(f"✅ Producto actualizado"); st.rerun()
+        
         st.write("---")
-        # .strip().upper()
         busqueda = st.text_input("🔍 Buscar en Historial", placeholder="Producto, Lote...").strip().upper()
         h = supabase.table("historial_movimientos").select("id, fecha_hora, tipo_movimiento, cantidad_afectada, origen_destino, observaciones, lote_id, productos(nombre_comercial), lotes_stock(numero_lote, fecha_vencimiento, senasa_codigo, gtin_codigo)").eq("sucursal_id", U_SUCURSAL).order("fecha_hora", desc=True).limit(100).execute()
         if h.data:
@@ -516,20 +531,128 @@ else:
             df = pd.DataFrame(flat_data)
             if busqueda: df = df[df.apply(lambda row: row.astype(str).str.contains(busqueda, case=False).any(), axis=1)]
             st.dataframe(df.drop(columns=["ID", "RAW_DATA"]), use_container_width=True)
-            st.write("---")
-            st.subheader("✏️ Corregir Transacción")
-            opciones = {f"{r['PRODUCTO']} | Lote: {r['LOTE']} | {r['CANTIDAD']}": r['RAW_DATA'] for index, r in df.iterrows() if r['MOVIMIENTO'] == 'INGRESO'}
-            if opciones:
-                seleccion = st.selectbox("Seleccionar Movimiento", list(opciones.keys()))
-                dato = opciones[seleccion]
-                with st.form("form_correccion_hist"):
-                    c1, c2 = st.columns(2)
-                    lote_actual = dato['lotes_stock']['numero_lote'] if dato['lotes_stock'] else ""
-                    #.strip().upper()
-                    nuevo_lote = c1.text_input("Corregir Lote", value=lote_actual).strip().upper()
-                    cant_actual = float(dato['cantidad_afectada'])
-                    nueva_cant = c2.number_input("Corregir Cantidad Real", value=cant_actual)
-                    if st.form_submit_button("GUARDAR CORRECCIÓN TOTAL", type="primary"):
-                        if corregir_movimiento(dato['id'], dato['lote_id'], nuevo_lote, nueva_cant, dato['lotes_stock']['fecha_vencimiento'], dato['lotes_stock']['senasa_codigo'], dato['lotes_stock']['gtin_codigo'], U_NOMBRE): st.success("✅ Todo actualizado."); st.rerun()
-            else: st.info("No hay ingresos editables.")
+            
+            # Solo Admin puede corregir transacciones
+            if U_ROL == 'ADMIN':
+                st.write("---")
+                st.subheader("✏️ Corregir Transacción")
+                opciones = {f"{r['PRODUCTO']} | Lote: {r['LOTE']} | {r['CANTIDAD']}": r['RAW_DATA'] for index, r in df.iterrows() if r['MOVIMIENTO'] == 'INGRESO'}
+                if opciones:
+                    seleccion = st.selectbox("Seleccionar Movimiento", list(opciones.keys()))
+                    dato = opciones[seleccion]
+                    with st.form("form_correccion_hist"):
+                        c1, c2 = st.columns(2)
+                        lote_actual = dato['lotes_stock']['numero_lote'] if dato['lotes_stock'] else ""
+                        nuevo_lote = c1.text_input("Corregir Lote", value=lote_actual).strip().upper()
+                        cant_actual = float(dato['cantidad_afectada'])
+                        nueva_cant = c2.number_input("Corregir Cantidad Real", value=cant_actual)
+                        if st.form_submit_button("GUARDAR CORRECCIÓN TOTAL", type="primary"):
+                            if corregir_movimiento(dato['id'], dato['lote_id'], nuevo_lote, nueva_cant, dato['lotes_stock']['fecha_vencimiento'], dato['lotes_stock']['senasa_codigo'], dato['lotes_stock']['gtin_codigo'], U_NOMBRE): st.success("✅ Todo actualizado."); st.rerun()
+                else: st.info("No hay ingresos editables.")
         else: st.info("Historial vacío.")
+
+
+    # VISTA: RECONTEO (Para Operarios y Admin)
+    elif st.session_state.vista == "Reconteo":
+        c_h, c_b = st.columns([4, 1])
+        c_h.header("🔍 Reconteo Cíclico")
+        if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
+
+        tab_nuevo, tab_pend = st.tabs(["📝 Nuevo Conteo", "✏️ Mis Pendientes"])
+
+        with tab_nuevo:
+            prods = supabase.table("productos").select("id, nombre_comercial").order("nombre_comercial").execute()
+            p_map = {p['nombre_comercial']: p['id'] for p in prods.data} if prods.data else {}
+            
+            p_sel = st.selectbox("Seleccionar Producto a Contar", list(p_map.keys()))
+            
+            if p_sel:
+                pid = p_map[p_sel]
+                lotes = supabase.table("lotes_stock").select("id, numero_lote, cantidad_actual, ubicaciones_internas(nombre_sector)")\
+                    .eq("producto_id", pid).eq("sucursal_id", U_SUCURSAL).gt("cantidad_actual", 0).execute()
+                
+                if lotes.data:
+                    l_opts = {f"Lote: {l['numero_lote']} | Ubic: {l['ubicaciones_internas']['nombre_sector']}": l for l in lotes.data}
+                    l_sel = st.selectbox("Seleccionar Lote Físico", list(l_opts.keys()))
+                    dato_lote = l_opts[l_sel]
+                    
+                    st.write("---")
+                    st.info(f"💾 Stock en Sistema: **{fmt(dato_lote['cantidad_actual'])}**")
+                    
+                    c1, c2 = st.columns(2)
+                    fisico = c1.number_input("🔢 Cantidad Física Real", min_value=0.0, step=1.0)
+                    
+                    diff = fisico - float(dato_lote['cantidad_actual'])
+                    
+                    motivo = ""
+                    if diff != 0:
+                        if diff > 0: st.success(f"📈 SOBRANTE: +{fmt(diff)}")
+                        else: st.error(f"📉 FALTANTE: {fmt(diff)}")
+                        
+                        motivo = st.text_area("📝 Motivo de la diferencia (Obligatorio)", placeholder="Ej: Mal conteo anterior, rotura no reportada, encontrado en otro pasillo...")
+                        
+                        if st.button("REGISTRAR INCIDENCIA", type="primary"):
+                            if motivo:
+                                if registrar_reconteo(pid, dato_lote['id'], float(dato_lote['cantidad_actual']), fisico, motivo, U_NOMBRE, U_SUCURSAL):
+                                    st.success("✅ Incidencia enviada a aprobación del Admin."); time.sleep(1.5); st.rerun()
+                                else: st.error("Error al guardar.")
+                            else:
+                                st.warning("⚠️ Debe escribir un motivo.")
+                    else:
+                        st.caption("✅ El stock coincide. No es necesario registrar incidencia.")
+
+                else: st.warning("No hay stock registrado de este producto para contar.")
+
+        with tab_pend:
+            # Editar incidencias propias que aun no revisó el admin
+            mis_pend = supabase.table("reconteos").select("*, productos(nombre_comercial), lotes_stock(numero_lote)")\
+                .eq("usuario_solicitante", U_NOMBRE).eq("estado", "PENDIENTE").execute()
+            
+            if mis_pend.data:
+                for item in mis_pend.data:
+                    with st.expander(f"{item['productos']['nombre_comercial']} | Lote: {item['lotes_stock']['numero_lote']}"):
+                        st.write(f"Sistema: {item['cantidad_sistema']} | **Tú contaste: {item['cantidad_fisica']}**")
+                        st.write(f"Motivo actual: {item['motivo']}")
+                        
+                        c_e1, c_e2 = st.columns(2)
+                        new_fis = c_e1.number_input("Corregir Cantidad", value=float(item['cantidad_fisica']), key=f"nf_{item['id']}")
+                        new_mot = c_e2.text_input("Corregir Motivo", value=item['motivo'], key=f"nm_{item['id']}")
+                        
+                        if st.button("ACTUALIZAR CONTEO", key=f"upd_{item['id']}"):
+                            editar_reconteo_pendiente(item['id'], new_fis, float(item['cantidad_sistema']), new_mot)
+                            st.success("Corregido."); st.rerun()
+            else:
+                st.info("No tienes reconteos pendientes de aprobación.")
+
+    # VISTA: APROBACIONES (SOLO ADMIN)
+    elif st.session_state.vista == "Aprobaciones":
+        if U_ROL != 'ADMIN': navegar_a("Menu Principal") # Seguridad extra
+        
+        c_h, c_b = st.columns([4, 1])
+        c_h.header("👮 Auditoría de Stock")
+        if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
+
+        pendientes = supabase.table("reconteos").select("*, productos(nombre_comercial), lotes_stock(numero_lote)")\
+            .eq("sucursal_id", U_SUCURSAL).eq("estado", "PENDIENTE").order("created_at").execute()
+
+        if pendientes.data:
+            for p in pendientes.data:
+                with st.container(border=True):
+                    c1, c2, c3, c4 = st.columns([2, 1, 2, 1])
+                    c1.markdown(f"**{p['productos']['nombre_comercial']}**\nLote: {p['lotes_stock']['numero_lote']}")
+                    c1.caption(f"👤 {p['usuario_solicitante']} | 📅 {p['created_at'][:10]}")
+                    
+                    c2.metric("Diferencia", f"{fmt(p['diferencia'])}", delta_color="off")
+                    
+                    c3.warning(f"🗣️ Motivo: {p['motivo']}")
+                    c3.write(f"Sis: {fmt(p['cantidad_sistema'])} ➡️ **Fís: {fmt(p['cantidad_fisica'])}**")
+                    
+                    if c4.button("✅ APROBAR", key=f"apr_{p['id']}", type="primary"):
+                        if aprobar_ajuste_stock(p['id'], U_NOMBRE):
+                            st.toast("Ajuste realizado"); time.sleep(1); st.rerun()
+                    
+                    if c4.button("❌ RECHAZAR", key=f"rec_{p['id']}", type="secondary"):
+                        rechazar_reconteo(p['id'])
+                        st.toast("Rechazado"); time.sleep(1); st.rerun()
+        else:
+            st.info("✅ No hay incidencias pendientes de aprobación.")
