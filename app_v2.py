@@ -223,25 +223,28 @@ else:
             
             detalle_origen = ""
             if motivo_base == "DEVOLUCIÓN CLIENTE":
-                detalle_origen = col_det.text_input("👤 Nombre del Cliente (Devolución)").upper()
+                #  .strip().upper()
+                detalle_origen = col_det.text_input("👤 Nombre del Cliente (Devolución)").strip().upper()
             elif motivo_base == "TRANSFERENCIA SUCURSAL":
-                detalle_origen = col_det.text_input("🏢 Sucursal de Origen").upper()
+                detalle_origen = col_det.text_input("🏢 Sucursal de Origen").strip().upper()
             elif motivo_base == "COMPRA PROVEEDOR":
-                detalle_origen = col_det.text_input("🏭 Proveedor (Opcional)").upper()
+                detalle_origen = col_det.text_input("🏭 Proveedor (Opcional)").strip().upper()
 
             st.write("---")
             es_nuevo = st.checkbox("🆕 ¿Es Producto Nuevo?")
             c1, c2, c3 = st.columns(3)
             prod_id = None
             if es_nuevo:
-                nom = c1.text_input("Nombre Nuevo").upper(); cat = c1.text_input("Categoría").upper()
+                # .strip().upper()
+                nom = c1.text_input("Nombre Nuevo").strip().upper(); cat = c1.text_input("Categoría").strip().upper()
             else:
                 if p_map: p_sel = c1.selectbox("Producto", list(p_map.keys())); prod_id = p_map[p_sel]['id']
                 else: es_nuevo = True
             
-            lote_input = c1.text_input("Lote").upper()
-            senasa_input = c2.text_input("SENASA").upper()
-            gtin_input = c2.text_input("GTIN").upper()
+            # .strip().upper() PARA EVITAR ERRORES DE LOTE
+            lote_input = c1.text_input("Lote").strip().upper()
+            senasa_input = c2.text_input("SENASA").strip().upper()
+            gtin_input = c2.text_input("GTIN").strip().upper()
             venc = c3.date_input("Vencimiento")
             ubic_id = u_map[c3.selectbox("Ubicación", list(u_map.keys()))] if u_map else None
             
@@ -269,7 +272,8 @@ else:
         p_map = {p['nombre_comercial']: p['id'] for p in prods.data}
 
         with st.container(border=True):
-            cli = st.text_input("Cliente / Destino").upper()
+            # .strip().upper()
+            cli = st.text_input("Cliente / Destino").strip().upper()
             if p_map:
                 p_sel = st.selectbox("Buscar Producto", list(p_map.keys()))
                 lotes = supabase.table("lotes_stock").select("id, numero_lote, cantidad_actual, ubicaciones_internas(nombre_sector)").eq("producto_id", p_map[p_sel]).eq("sucursal_id", U_SUCURSAL).gt("cantidad_actual", 0).execute()
@@ -330,13 +334,16 @@ else:
                     st.info(f"👉 Sacar **{fmt(cant_ped)}** | Lote: **{lote_txt}**")
                     
                     c1, c2 = st.columns(2)
-                    l_real = c1.text_input("Confirmar Lote Físico", key=f"lr_{item['id']}").upper()
+                    # CORRECCIÓN CLAVE AQUÍ
+                    # .strip().upper() para asegurar que no haya espacios fantasma
+                    l_real = c1.text_input("Confirmar Lote Físico", key=f"lr_{item['id']}").strip().upper()
                     
                     st.caption("Validar Cantidad Real:")
                     total_real_calc, b, u = calculadora_stock(f"val_{item['id']}")
                     
                     if st.button("VALIDAR", key=f"v_{item['id']}", type="primary"):
-                        l_esp = lote_txt.upper()
+                        # Aseguramos también que el lote esperado esté limpio
+                        l_esp = lote_txt.strip().upper()
                         c_real = total_real_calc
                         
                         if l_real == l_esp and c_real == cant_ped:
@@ -365,7 +372,8 @@ else:
         c_h, c_b = st.columns([4, 1])
         c_h.header("📊 Stock")
         if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
-        filtro = st.text_input("🔍 Buscar...").upper()
+        # .strip().upper()
+        filtro = st.text_input("🔍 Buscar...").strip().upper()
         res = supabase.table("lotes_stock").select("*, productos(nombre_comercial), ubicaciones_internas(nombre_sector)").eq("sucursal_id", U_SUCURSAL).gt("cantidad_actual", 0).execute()
         if res.data:
             data = []
@@ -407,12 +415,14 @@ else:
                 p_dict = {p['nombre_comercial']: p for p in all_prods.data}
                 p_sel_edit = st.selectbox("Seleccionar Producto", list(p_dict.keys()), key="master_edit_sel")
                 ce1, ce2 = st.columns(2)
-                new_name = ce1.text_input("Nuevo Nombre", value=p_sel_edit).upper()
-                new_cat = ce2.text_input("Nueva Categoría", value=p_dict[p_sel_edit].get('categoria', '') or "").upper()
+                #.strip().upper()
+                new_name = ce1.text_input("Nuevo Nombre", value=p_sel_edit).strip().upper()
+                new_cat = ce2.text_input("Nueva Categoría", value=p_dict[p_sel_edit].get('categoria', '') or "").strip().upper()
                 if st.button("GUARDAR CAMBIOS EN MAESTRO", type="primary"):
                     if editar_producto(p_dict[p_sel_edit]['id'], new_name, new_cat): st.success(f"✅ Producto actualizado"); st.rerun()
         st.write("---")
-        busqueda = st.text_input("🔍 Buscar en Historial", placeholder="Producto, Lote...").upper()
+        # .strip().upper()
+        busqueda = st.text_input("🔍 Buscar en Historial", placeholder="Producto, Lote...").strip().upper()
         h = supabase.table("historial_movimientos").select("id, fecha_hora, tipo_movimiento, cantidad_afectada, origen_destino, observaciones, lote_id, productos(nombre_comercial), lotes_stock(numero_lote, fecha_vencimiento, senasa_codigo, gtin_codigo)").eq("sucursal_id", U_SUCURSAL).order("fecha_hora", desc=True).limit(100).execute()
         if h.data:
             flat_data = []
@@ -435,7 +445,8 @@ else:
                 with st.form("form_correccion_hist"):
                     c1, c2 = st.columns(2)
                     lote_actual = dato['lotes_stock']['numero_lote'] if dato['lotes_stock'] else ""
-                    nuevo_lote = c1.text_input("Corregir Lote", value=lote_actual).upper()
+                    #.strip().upper()
+                    nuevo_lote = c1.text_input("Corregir Lote", value=lote_actual).strip().upper()
                     cant_actual = float(dato['cantidad_afectada'])
                     nueva_cant = c2.number_input("Corregir Cantidad Real", value=cant_actual)
                     if st.form_submit_button("GUARDAR CORRECCIÓN TOTAL", type="primary"):
