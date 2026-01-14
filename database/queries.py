@@ -26,7 +26,7 @@ def verificar_login(usuario, password):
         return None
     except: return None
 
-# PRODUCTOS (Globales para todas las sucursales)
+# PRODUCTOS 
 def crear_producto(nombre, categoria):
     try:
         sku_auto = f"NEW-{int(datetime.now().timestamp())}"
@@ -47,7 +47,7 @@ def editar_producto(producto_id, nuevo_nombre, nueva_categoria):
         return True
     except: return False
 
-# MOVIMIENTOS (Filtrados por Sucursal)
+# MOVIMIENTOS 
 
 def registrar_ingreso(producto_id, lote, cantidad, ubicacion_id, usuario, fecha_venc, senasa, gtin, motivo_ingreso, sucursal):
     try:
@@ -154,5 +154,105 @@ def corregir_movimiento(movimiento_id, lote_id, nuevo_lote, nueva_cantidad, nuev
                 "numero_lote": nuevo_lote.upper().strip(), "fecha_vencimiento": str(nueva_venc),
                 "cantidad_actual": stock_actual + diferencia, "senasa_codigo": nuevo_senasa.upper().strip(), "gtin_codigo": nuevo_gtin.upper().strip()
             }).eq("id", lote_id).execute()
+        return True
+    except: return False
+        def mover_a_guarda(lote_origen_id, cantidad_rotura, usuario):
+    """
+    Resta cantidad del lote original (DISPONIBLE) y crea/suma a un lote en estado GUARDA.
+    """
+    try:
+        # 1. Obtener datos del lote original
+        origen = supabase.table("lotes_stock").select("*").eq("id", lote_origen_id).execute()
+        if not origen.data: return False
+        lote_data = origen.data[0]
+        
+        cant_actual = float(lote_data['cantidad_actual'])
+        if cantidad_rotura > cant_actual: return False # Seguridad extra
+
+        # 2. Restar del lote original (Disponible)
+        supabase.table("lotes_stock").update({
+            "cantidad_actual": cant_actual - cantidad_rotura,
+            "ultima_actualizacion": ahora_arg()
+        }).eq("id", lote_origen_id).execute()
+
+        # 3. Buscar si ya existe ese lote en GUARDA para esa sucursal
+        existe_guarda = supabase.table("lotes_stock").select("*")\
+            .eq("producto_id", lote_data['producto_id'])\
+            .eq("numero_lote", lote_data['numero_lote'])\
+            .eq("sucursal_id", lote_data['sucursal_id'])\
+            .eq("estado_calidad", "GUARDA").execute()
+
+        lote_guarda_id = None
+
+        if existe_guarda.data:
+            # Si existe, suma
+            lote_guarda_id = existe_guarda.data[0]['id']
+            nueva_cant_guarda = float(existe_guarda.data[0]['cantidad_actual']) + cantidad_rotura
+            supabase.table("lotes_stock").update({
+                "cantidad_actual": nueva_cant_guarda,
+                "ultima_actualizacion": ahora_arg()
+            }).eq("id", lote_guarda_id).execute()
+        else:
+            # Si no existe, crea el registro en GUARDA
+            nuevo_lote = lote_data.copy()
+            del nuevo_lote['id'] 
+            del nuevo_lote['created_at'] 
+            nuevo_lote['cantidad_actual'] = cantidad_rotura
+            nuevo_lote['estado_calidad'] = "GUARDA"
+            nuevo_lote['ultima_actualizacion'] = ahora_arg()
+            
+            res = supabase.table("lotes_stock").insert(nuevo_lote).execute()
+            if res.data: lote_guarda_id = res.data[0]['id']
+
+        # 4. Registrar en historial
+        if lote_guarda_id:
+            supabase.table("historial_movimientos").insert({
+                "producto_id": lote_data['producto_id'],
+                "lote_id": lote_guarda_id,
+                "tipo_movimiento": "ROTURA_A_GUARDA",
+                "cantidad_afectada": cantidad_rotura, # Positivo porque entra a guarda
+                "origen_destino": "MOVIMIENTO INTERNO",
+                "usuario_operador": usuario,
+                "estado_confirmacion": "TERMINADO",
+                "observaciones": f"Rotura reportada desde lote {lote_data['numero_lote']}",
+                "fecha_hora": ahora_arg(),
+                "sucursal_id": lote_data['sucursal_id']
+            }).execute()
+            return True
+        return False
+    except Exception as e:
+        print(e)
+        return False
+
+def baja_uso_interno(lote_guarda_id, cantidad, motivo, usuario):
+    """
+    Da de baja stock que estaba en GUARDA para uso interno o descarte.
+    """
+    try:
+        lote = supabase.table("lotes_stock").select("cantidad_actual, producto_id, sucursal_id").eq("id", lote_guarda_id).execute()
+        if not lote.data: return False
+        
+        cant_actual = float(lote.data[0]['cantidad_actual'])
+        nuevo_saldo = cant_actual - cantidad
+        
+        # Actualizar stock guarda
+        supabase.table("lotes_stock").update({
+            "cantidad_actual": nuevo_saldo,
+            "ultima_actualizacion": ahora_arg()
+        }).eq("id", lote_guarda_id).execute()
+
+        # Historial de baja
+        supabase.table("historial_movimientos").insert({
+            "producto_id": lote.data[0]['producto_id'],
+            "lote_id": lote_guarda_id,
+            "tipo_movimiento": "EGRESO_BAJA",
+            "cantidad_afectada": cantidad * -1,
+            "origen_destino": "USO INTERNO / DESCARTE",
+            "usuario_operador": usuario,
+            "estado_confirmacion": "TERMINADO",
+            "observaciones": f"Baja desde Guarda: {motivo}",
+            "fecha_hora": ahora_arg(),
+            "sucursal_id": lote.data[0]['sucursal_id']
+        }).execute()
         return True
     except: return False
