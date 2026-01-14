@@ -256,7 +256,7 @@ def baja_uso_interno(lote_guarda_id, cantidad, motivo, usuario):
         return True
     except: return False
 
-# FUNCIONES PARA AUDITORIA/RECONTEO
+# --- NUEVAS FUNCIONES PARA AUDITORIA/RECONTEO ---
 
 def registrar_reconteo(producto_id, lote_id, cant_sistema, cant_fisica, motivo, usuario, sucursal):
     try:
