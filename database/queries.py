@@ -1,6 +1,6 @@
 import streamlit as st
 from supabase import create_client, Client
-from datetime import datetime, timedelta 
+from datetime import datetime, timedelta
 import pytz 
 
 # Configuración de Zona Horaria ARGENTINA
@@ -19,7 +19,6 @@ def ahora_arg():
 
 # LOGIN & SEGURIDAD
 def verificar_login(usuario, password):
-    """Devuelve el usuario si coincide pass y user"""
     try:
         res = supabase.table("usuarios").select("*").eq("username", usuario.strip()).eq("password", password.strip()).execute()
         if res.data: return res.data[0]
@@ -314,7 +313,7 @@ def rechazar_reconteo(reconteo_id):
     try:
         supabase.table("reconteos").update({"estado": "RECHAZADO"}).eq("id", reconteo_id).execute()
         return True
-    except: return False 
+    except: return False
 
 def obtener_ids_productos_con_movimiento(sucursal, dias_atras):
     """Devuelve IDs de productos con actividad en los últimos X días"""
@@ -381,7 +380,7 @@ def resolver_incidencia(incidencia_id, accion, usuario_admin):
                     "cantidad_afectada": -a_bajar,
                     "lote_id": inc['lote_id'],
                     "sucursal_id": inc['sucursal_id'],
-                    "usuario_operador": usuario_admin, 
+                    "usuario_operador": usuario_admin,
                     "estado_confirmacion": "TERMINADO",
                     "fecha_hora": ahora_arg(),
                     "observaciones": f"Incidencia Aprobada ID {incidencia_id}: {inc['motivo']}"
