@@ -331,4 +331,26 @@ def rechazar_reconteo(reconteo_id):
     try:
         supabase.table("reconteos").update({"estado": "RECHAZADO"}).eq("id", reconteo_id).execute()
         return True
-    except: return False
+    except: return Falso
+
+def obtener_ids_productos_con_movimiento(sucursal, dias_atras):
+    """
+    Devuelve una lista de IDs de productos que tuvieron actividad en los últimos X días.
+    """
+    try:
+        # Calcula la fecha límite (Hoy - dias_atras)
+        fecha_limite = (datetime.now(ARG) - timedelta(days=dias_atras)).isoformat()
+        
+        # Traem solo producto_id para ser rápidos
+        res = supabase.table("historial_movimientos")\
+            .select("producto_id")\
+            .eq("sucursal_id", sucursal)\
+            .gte("fecha_hora", fecha_limite)\
+            .execute()
+            
+        if res.data:
+            # set() para eliminar duplicados (si un prod se movió 10 veces, solo quiero el ID una vez)
+            ids_unicos = list(set([x['producto_id'] for x in res.data]))
+            return ids_unicos
+        return []
+    except: return []
