@@ -4,7 +4,7 @@ import qrcode
 from io import BytesIO
 from datetime import datetime, timedelta
 import pytz
-import extra_streamlit_components as stx 
+import extra_streamlit_components as stx
 import time
 from database.queries import (
     supabase, registrar_ingreso, crear_producto, editar_producto, 
@@ -559,7 +559,7 @@ else:
         else: st.info("Historial vacío.")
 
 
-    # VISTA: RECONTEO 
+    # VISTA: RECONTEO (CON FILTRO DE TIEMPO)
     elif st.session_state.vista == "Reconteo":
         c_h, c_b = st.columns([4, 1])
         c_h.header("🔍 Reconteo Cíclico")
@@ -679,7 +679,7 @@ else:
 
         tab_ajustes, tab_roturas = st.tabs(["📊 Ajustes de Inventario", "💔 Bajas por Rotura"])
 
-        # TAB 1: AJUSTES DE INVENTARIO
+        #  TAB 1: AJUSTES DE INVENTARIO 
         with tab_ajustes:
             pendientes = supabase.table("reconteos").select("*, productos(nombre_comercial), lotes_stock(numero_lote)")\
                 .eq("sucursal_id", U_SUCURSAL).eq("estado", "PENDIENTE").order("created_at").execute()
