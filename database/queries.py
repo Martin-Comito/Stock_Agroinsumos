@@ -47,7 +47,6 @@ def editar_producto(producto_id, nuevo_nombre, nueva_categoria):
     except: return False
 
 # MOVIMIENTOS 
-
 def registrar_ingreso(producto_id, lote, cantidad, ubicacion_id, usuario, fecha_venc, senasa, gtin, motivo_ingreso, sucursal):
     try:
         lote_upper = lote.strip().upper()
@@ -313,7 +312,7 @@ def rechazar_reconteo(reconteo_id):
     try:
         supabase.table("reconteos").update({"estado": "RECHAZADO"}).eq("id", reconteo_id).execute()
         return True
-    except: return False
+    except: return False 
 
 def obtener_ids_productos_con_movimiento(sucursal, dias_atras):
     """Devuelve IDs de productos con actividad en los últimos X días"""
@@ -331,7 +330,7 @@ def obtener_ids_productos_con_movimiento(sucursal, dias_atras):
         return []
     except: return []
 
-# FUNCIONES PARA INCIDENCIAS (ROTURAS)
+# --- FUNCIONES PARA INCIDENCIAS (ROTURAS) ---
 
 def registrar_incidencia(lote_id, cantidad, motivo, usuario, sucursal):
     """Guarda el reporte sin tocar el stock real todavía"""
