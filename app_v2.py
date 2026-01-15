@@ -372,12 +372,12 @@ else:
                     
                     c1, c2 = st.columns(2)
                     l_real = c1.text_input("Confirmar Lote Físico", key=f"lr_{item['id']}").strip().upper()
+                    l_esp = lote_txt.strip().upper() # <--- CORREGIDO: Definido fuera del botón
                     
                     st.caption("Validar Cantidad Real:")
                     total_real_calc, b, u = calculadora_stock(f"val_{item['id']}")
                     
                     if st.button("VALIDAR", key=f"v_{item['id']}", type="primary"):
-                        l_esp = lote_txt.strip().upper()
                         c_real = total_real_calc
                         
                         if l_real == l_esp and c_real == cant_ped:
@@ -679,7 +679,7 @@ else:
 
         tab_ajustes, tab_roturas = st.tabs(["📊 Ajustes de Inventario", "💔 Bajas por Rotura"])
 
-        #  TAB 1: AJUSTES DE INVENTARIO 
+        # --- TAB 1: AJUSTES DE INVENTARIO (Tu código existente) ---
         with tab_ajustes:
             pendientes = supabase.table("reconteos").select("*, productos(nombre_comercial), lotes_stock(numero_lote)")\
                 .eq("sucursal_id", U_SUCURSAL).eq("estado", "PENDIENTE").order("created_at").execute()
@@ -706,7 +706,7 @@ else:
             else:
                 st.info("✅ No hay ajustes de conteo pendientes.")
 
-        # TAB 2: GESTIÓN DE INCIDENCIAS
+        # --- TAB 2: GESTIÓN DE INCIDENCIAS (NUEVO) ---
         with tab_roturas:
             incidencias = supabase.table("incidencias").select("*, lotes_stock(numero_lote, productos(nombre_comercial))")\
                 .eq("sucursal_id", U_SUCURSAL).eq("estado", "PENDIENTE").execute()
