@@ -1,6 +1,6 @@
 import streamlit as st
 from supabase import create_client, Client
-from datetime import datetime
+from datetime import datetime, timedelta 
 import pytz 
 
 # Configuración de Zona Horaria ARGENTINA
@@ -21,7 +21,6 @@ def ahora_arg():
 def verificar_login(usuario, password):
     """Devuelve el usuario si coincide pass y user"""
     try:
-        # Traemos todos los campos, incluido 'rol'
         res = supabase.table("usuarios").select("*").eq("username", usuario.strip()).eq("password", password.strip()).execute()
         if res.data: return res.data[0]
         return None
@@ -53,7 +52,6 @@ def editar_producto(producto_id, nuevo_nombre, nueva_categoria):
 def registrar_ingreso(producto_id, lote, cantidad, ubicacion_id, usuario, fecha_venc, senasa, gtin, motivo_ingreso, sucursal):
     try:
         lote_upper = lote.strip().upper()
-        # Busca lote SOLO en la sucursal del usuario
         res = supabase.table("lotes_stock").select("*").eq("producto_id", producto_id).eq("numero_lote", lote_upper).eq("ubicacion_id", ubicacion_id).eq("sucursal_id", sucursal).execute()
         
         lote_id_final = None
@@ -159,25 +157,19 @@ def corregir_movimiento(movimiento_id, lote_id, nuevo_lote, nueva_cantidad, nuev
     except: return False
 
 def mover_a_guarda(lote_origen_id, cantidad_rotura, usuario):
-    """
-    Resta cantidad del lote original (DISPONIBLE) y crea/suma a un lote en estado GUARDA.
-    """
     try:
-        # 1. Obtener datos del lote original
         origen = supabase.table("lotes_stock").select("*").eq("id", lote_origen_id).execute()
         if not origen.data: return False
         lote_data = origen.data[0]
         
         cant_actual = float(lote_data['cantidad_actual'])
-        if cantidad_rotura > cant_actual: return False # Seguridad extra
+        if cantidad_rotura > cant_actual: return False 
 
-        # 2. Restar del lote original (Disponible)
         supabase.table("lotes_stock").update({
             "cantidad_actual": cant_actual - cantidad_rotura,
             "ultima_actualizacion": ahora_arg()
         }).eq("id", lote_origen_id).execute()
 
-        # 3. Buscar si ya existe ese lote en GUARDA para esa sucursal
         existe_guarda = supabase.table("lotes_stock").select("*")\
             .eq("producto_id", lote_data['producto_id'])\
             .eq("numero_lote", lote_data['numero_lote'])\
@@ -187,7 +179,6 @@ def mover_a_guarda(lote_origen_id, cantidad_rotura, usuario):
         lote_guarda_id = None
 
         if existe_guarda.data:
-            # Si existe, suma
             lote_guarda_id = existe_guarda.data[0]['id']
             nueva_cant_guarda = float(existe_guarda.data[0]['cantidad_actual']) + cantidad_rotura
             supabase.table("lotes_stock").update({
@@ -195,7 +186,6 @@ def mover_a_guarda(lote_origen_id, cantidad_rotura, usuario):
                 "ultima_actualizacion": ahora_arg()
             }).eq("id", lote_guarda_id).execute()
         else:
-            # Si no existe, crea el registro en GUARDA
             nuevo_lote = lote_data.copy()
             del nuevo_lote['id'] 
             del nuevo_lote['created_at'] 
@@ -206,7 +196,6 @@ def mover_a_guarda(lote_origen_id, cantidad_rotura, usuario):
             res = supabase.table("lotes_stock").insert(nuevo_lote).execute()
             if res.data: lote_guarda_id = res.data[0]['id']
 
-        # 4. Registrar en historial
         if lote_guarda_id:
             supabase.table("historial_movimientos").insert({
                 "producto_id": lote_data['producto_id'],
@@ -234,13 +223,11 @@ def baja_uso_interno(lote_guarda_id, cantidad, motivo, usuario):
         cant_actual = float(lote.data[0]['cantidad_actual'])
         nuevo_saldo = cant_actual - cantidad
         
-        # Actualizar stock guarda
         supabase.table("lotes_stock").update({
             "cantidad_actual": nuevo_saldo,
             "ultima_actualizacion": ahora_arg()
         }).eq("id", lote_guarda_id).execute()
 
-        # Historial de baja
         supabase.table("historial_movimientos").insert({
             "producto_id": lote.data[0]['producto_id'],
             "lote_id": lote_guarda_id,
@@ -256,7 +243,7 @@ def baja_uso_interno(lote_guarda_id, cantidad, motivo, usuario):
         return True
     except: return False
 
-# --- NUEVAS FUNCIONES PARA AUDITORIA/RECONTEO ---
+# AUDITORIA/RECONTEO
 
 def registrar_reconteo(producto_id, lote_id, cant_sistema, cant_fisica, motivo, usuario, sucursal):
     try:
@@ -290,18 +277,15 @@ def editar_reconteo_pendiente(reconteo_id, nueva_cant_fisica, cant_sistema, nuev
 
 def aprobar_ajuste_stock(reconteo_id, admin_user):
     try:
-        # 1. Obtener datos del reconteo
         rec_res = supabase.table("reconteos").select("*").eq("id", reconteo_id).execute()
         if not rec_res.data: return False
         rec = rec_res.data[0]
         
-        # 2. Actualizar Lote
         supabase.table("lotes_stock").update({
             "cantidad_actual": rec['cantidad_fisica'],
             "ultima_actualizacion": ahora_arg()
         }).eq("id", rec['lote_id']).execute()
 
-        # 3. Insertar Historial (Auditoría)
         tipo = "AJUSTE_POSITIVO" if rec['diferencia'] > 0 else "AJUSTE_NEGATIVO"
         supabase.table("historial_movimientos").insert({
             "producto_id": rec['producto_id'],
@@ -316,7 +300,6 @@ def aprobar_ajuste_stock(reconteo_id, admin_user):
             "sucursal_id": rec['sucursal_id']
         }).execute()
 
-        # 4. Cerrar Reconteo
         supabase.table("reconteos").update({
             "estado": "APROBADO",
             "fecha_auditoria": ahora_arg()
@@ -331,17 +314,12 @@ def rechazar_reconteo(reconteo_id):
     try:
         supabase.table("reconteos").update({"estado": "RECHAZADO"}).eq("id", reconteo_id).execute()
         return True
-    except: return Falso
+    except: return False 
 
 def obtener_ids_productos_con_movimiento(sucursal, dias_atras):
-    """
-    Devuelve una lista de IDs de productos que tuvieron actividad en los últimos X días.
-    """
+    """Devuelve IDs de productos con actividad en los últimos X días"""
     try:
-        # Calcula la fecha límite (Hoy - dias_atras)
         fecha_limite = (datetime.now(ARG) - timedelta(days=dias_atras)).isoformat()
-        
-        # Traem solo producto_id para ser rápidos
         res = supabase.table("historial_movimientos")\
             .select("producto_id")\
             .eq("sucursal_id", sucursal)\
@@ -349,8 +327,72 @@ def obtener_ids_productos_con_movimiento(sucursal, dias_atras):
             .execute()
             
         if res.data:
-            # set() para eliminar duplicados (si un prod se movió 10 veces, solo quiero el ID una vez)
             ids_unicos = list(set([x['producto_id'] for x in res.data]))
             return ids_unicos
         return []
     except: return []
+
+# FUNCIONES PARA INCIDENCIAS (ROTURAS)
+
+def registrar_incidencia(lote_id, cantidad, motivo, usuario, sucursal):
+    """Guarda el reporte sin tocar el stock real todavía"""
+    try:
+        data = {
+            "lote_id": lote_id,
+            "cantidad": cantidad,
+            "motivo": motivo,
+            "usuario_solicitante": usuario,
+            "sucursal_id": sucursal,
+            "estado": "PENDIENTE"
+        }
+        supabase.table("incidencias").insert(data).execute()
+        return True
+    except Exception as e:
+        print(f"Error registrar_incidencia: {e}")
+        return False
+
+def resolver_incidencia(incidencia_id, accion, usuario_admin):
+    """
+    accion: 'APROBAR' (Resta stock real) o 'RECHAZAR' (Solo cierra ticket)
+    """
+    try:
+        res = supabase.table("incidencias").select("*, lotes_stock(cantidad_actual)").eq("id", incidencia_id).single().execute()
+        inc = res.data
+        
+        if not inc: return False
+        
+        if accion == 'RECHAZAR':
+            supabase.table("incidencias").update({"estado": "RECHAZADO"}).eq("id", incidencia_id).execute()
+            return True
+
+        elif accion == 'APROBAR':
+            stock_actual = float(inc['lotes_stock']['cantidad_actual'])
+            a_bajar = float(inc['cantidad'])
+            
+            if stock_actual >= a_bajar:
+                nueva_cantidad = stock_actual - a_bajar
+                
+                # 1. Restar del stock físico
+                supabase.table("lotes_stock").update({"cantidad_actual": nueva_cantidad}).eq("id", inc['lote_id']).execute()
+                
+                # 2. Registrar en historial de movimientos
+                historial = {
+                    "tipo_movimiento": "BAJA POR ROTURA",
+                    "cantidad_afectada": -a_bajar,
+                    "lote_id": inc['lote_id'],
+                    "sucursal_id": inc['sucursal_id'],
+                    "usuario_operador": usuario_admin, 
+                    "estado_confirmacion": "TERMINADO",
+                    "fecha_hora": ahora_arg(),
+                    "observaciones": f"Incidencia Aprobada ID {incidencia_id}: {inc['motivo']}"
+                }
+                supabase.table("historial_movimientos").insert(historial).execute()
+                
+                # 3. Cerrar incidencia
+                supabase.table("incidencias").update({"estado": "APROBADO"}).eq("id", incidencia_id).execute()
+                return True
+            else:
+                return False 
+    except Exception as e:
+        print(f"Error resolver_incidencia: {e}")
+        return False
