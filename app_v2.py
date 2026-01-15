@@ -11,7 +11,8 @@ from database.queries import (
     crear_orden_pendiente, confirmar_despacho_real, mover_pallet, 
     corregir_movimiento, verificar_login, mover_a_guarda, baja_uso_interno,
     registrar_reconteo, editar_reconteo_pendiente, aprobar_ajuste_stock, rechazar_reconteo,
-    obtener_ids_productos_con_movimiento # <--- NUEVA FUNCIÓN IMPORTADA
+    obtener_ids_productos_con_movimiento,
+    registrar_incidencia, resolver_incidencia
 )
 
 st.set_page_config(page_title="AgroCheck Pro V2", page_icon="🚜", layout="wide", initial_sidebar_state="collapsed")
@@ -407,7 +408,7 @@ else:
         if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
         
         filtro = st.text_input("🔍 Buscar...").strip().upper()
-        tab1, tab2, tab3 = st.tabs(["📋 Listado General", "🚨 Reportar Rotura", "🗑️ Baja Uso Interno"])
+        tab1, tab2, tab3 = st.tabs(["📋 Listado General", "🚨 Reportar Rotura/Incidencia", "🗑️ Baja Uso Interno"])
 
         # TAB 1: LISTADO
         with tab1:
@@ -438,26 +439,33 @@ else:
                 st.dataframe(pd.DataFrame(data), use_container_width=True)
             else: st.info("Sin stock.")
 
-        # TAB 2: ROTURA
+        # TAB 2: INCIDENCIA / ROTURA (MODIFICADO)
         with tab2:
-            st.caption("Mover mercadería de 'Disponible' a 'Guarda'.")
+            st.caption("⚠️ Reportar mercadería rota o pinchada (No afecta stock hasta aprobación del Admin).")
+            # Filtramos lotes con stock > 0
             lotes_sanos = supabase.table("lotes_stock").select("id, numero_lote, cantidad_actual, productos(nombre_comercial)")\
-                .eq("sucursal_id", U_SUCURSAL).eq("estado_calidad", "DISPONIBLE").gt("cantidad_actual", 0).execute()
+                .eq("sucursal_id", U_SUCURSAL).gt("cantidad_actual", 0).execute()
             
             if lotes_sanos.data:
                 opts_sanos = {f"{x['productos']['nombre_comercial']} | Lote: {x['numero_lote']} | Disp: {fmt(x['cantidad_actual'])}": x for x in lotes_sanos.data}
-                sel_sano = st.selectbox("Seleccionar Producto Sano", list(opts_sanos.keys()))
+                sel_sano = st.selectbox("Seleccionar Producto Afectado", list(opts_sanos.keys()))
                 dato_sano = opts_sanos[sel_sano]
                 
                 c1, c2 = st.columns(2)
-                cant_rotura = c1.number_input("Cantidad Rota", min_value=0.0, max_value=float(dato_sano['cantidad_actual']), step=1.0)
+                # Input de cantidad
+                cant_rotura = c1.number_input("Cantidad Rota/Pinchada", min_value=0.0, max_value=float(dato_sano['cantidad_actual']), step=1.0)
+                # Input de motivo
+                motivo_incidencia = c2.selectbox("Motivo", ["ROTO", "PINCHADO", "VENCIDO", "HUMEDAD", "OTRO"])
                 
-                if st.button("CONFIRMAR ROTURA (A GUARDA)", type="primary"):
+                if st.button("🚨 REPORTAR INCIDENCIA", type="primary"):
                     if cant_rotura > 0:
-                        if mover_a_guarda(dato_sano['id'], cant_rotura, U_NOMBRE):
-                            st.success("✅ Rotura registrada. Mercadería movida a GUARDA."); time.sleep(1.5); st.rerun()
-                        else: st.error("Error al mover.")
-            else: st.info("No hay stock disponible para reportar roturas.")
+                        if registrar_incidencia(dato_sano['id'], cant_rotura, motivo_incidencia, U_NOMBRE, U_SUCURSAL):
+                            st.success("✅ Reporte enviado al Administrador. El stock físico se mantiene igual por ahora."); 
+                            time.sleep(2); st.rerun()
+                        else: st.error("Error al enviar el reporte.")
+                    else:
+                        st.warning("La cantidad debe ser mayor a 0.")
+            else: st.info("No hay stock disponible para reportar.")
 
         # TAB 3: BAJA
         with tab3:
@@ -551,7 +559,7 @@ else:
         else: st.info("Historial vacío.")
 
 
-    # VISTA: RECONTEO (CON FILTRO DE TIEMPO)
+    # VISTA: RECONTEO 
     elif st.session_state.vista == "Reconteo":
         c_h, c_b = st.columns([4, 1])
         c_h.header("🔍 Reconteo Cíclico")
@@ -661,35 +669,68 @@ else:
             else:
                 st.info("No tienes reconteos pendientes de aprobación.")
 
-    # VISTA: APROBACIONES (SOLO ADMIN)
+    # VISTA: APROBACIONES (SOLO ADMIN) - MODIFICADA PARA INCIDENCIAS
     elif st.session_state.vista == "Aprobaciones":
-        if U_ROL != 'ADMIN': navegar_a("Menu Principal") # Seguridad extra
+        if U_ROL != 'ADMIN': navegar_a("Menu Principal")
         
         c_h, c_b = st.columns([4, 1])
-        c_h.header("👮 Auditoría de Stock")
+        c_h.header("👮 Auditoría y Aprobaciones")
         if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
 
-        pendientes = supabase.table("reconteos").select("*, productos(nombre_comercial), lotes_stock(numero_lote)")\
-            .eq("sucursal_id", U_SUCURSAL).eq("estado", "PENDIENTE").order("created_at").execute()
+        tab_ajustes, tab_roturas = st.tabs(["📊 Ajustes de Inventario", "💔 Bajas por Rotura"])
 
-        if pendientes.data:
-            for p in pendientes.data:
-                with st.container(border=True):
-                    c1, c2, c3, c4 = st.columns([2, 1, 2, 1])
-                    c1.markdown(f"**{p['productos']['nombre_comercial']}**\nLote: {p['lotes_stock']['numero_lote']}")
-                    c1.caption(f"👤 {p['usuario_solicitante']} | 📅 {p['created_at'][:10]}")
-                    
-                    c2.metric("Diferencia", f"{fmt(p['diferencia'])}", delta_color="off")
-                    
-                    c3.warning(f"🗣️ Motivo: {p['motivo']}")
-                    c3.write(f"Sis: {fmt(p['cantidad_sistema'])} ➡️ **Fís: {fmt(p['cantidad_fisica'])}**")
-                    
-                    if c4.button("✅ APROBAR", key=f"apr_{p['id']}", type="primary"):
-                        if aprobar_ajuste_stock(p['id'], U_NOMBRE):
-                            st.toast("Ajuste realizado"); time.sleep(1); st.rerun()
-                    
-                    if c4.button("❌ RECHAZAR", key=f"rec_{p['id']}", type="secondary"):
-                        rechazar_reconteo(p['id'])
-                        st.toast("Rechazado"); time.sleep(1); st.rerun()
-        else:
-            st.info("✅ No hay incidencias pendientes de aprobación.")
+        # TAB 1: AJUSTES DE INVENTARIO
+        with tab_ajustes:
+            pendientes = supabase.table("reconteos").select("*, productos(nombre_comercial), lotes_stock(numero_lote)")\
+                .eq("sucursal_id", U_SUCURSAL).eq("estado", "PENDIENTE").order("created_at").execute()
+
+            if pendientes.data:
+                for p in pendientes.data:
+                    with st.container(border=True):
+                        c1, c2, c3, c4 = st.columns([2, 1, 2, 1])
+                        c1.markdown(f"**{p['productos']['nombre_comercial']}**\nLote: {p['lotes_stock']['numero_lote']}")
+                        c1.caption(f"👤 {p['usuario_solicitante']} | 📅 {p['created_at'][:10]}")
+                        
+                        c2.metric("Diferencia", f"{fmt(p['diferencia'])}", delta_color="off")
+                        
+                        c3.warning(f"🗣️ Motivo: {p['motivo']}")
+                        c3.write(f"Sis: {fmt(p['cantidad_sistema'])} ➡️ **Fís: {fmt(p['cantidad_fisica'])}**")
+                        
+                        if c4.button("✅ APROBAR", key=f"apr_{p['id']}", type="primary"):
+                            if aprobar_ajuste_stock(p['id'], U_NOMBRE):
+                                st.toast("Ajuste realizado"); time.sleep(1); st.rerun()
+                        
+                        if c4.button("❌ RECHAZAR", key=f"rec_{p['id']}", type="secondary"):
+                            rechazar_reconteo(p['id'])
+                            st.toast("Rechazado"); time.sleep(1); st.rerun()
+            else:
+                st.info("✅ No hay ajustes de conteo pendientes.")
+
+        # TAB 2: GESTIÓN DE INCIDENCIAS
+        with tab_roturas:
+            incidencias = supabase.table("incidencias").select("*, lotes_stock(numero_lote, productos(nombre_comercial))")\
+                .eq("sucursal_id", U_SUCURSAL).eq("estado", "PENDIENTE").execute()
+            
+            if incidencias.data:
+                for inc in incidencias.data:
+                    with st.container(border=True):
+                        st.markdown(f"### ⚠️ {inc['lotes_stock']['productos']['nombre_comercial']}")
+                        st.caption(f"Lote: {inc['lotes_stock']['numero_lote']} | Reportado por: {inc['usuario_solicitante']} | Fecha: {inc['created_at'][:10]}")
+                        
+                        c_info, c_action = st.columns([3, 1])
+                        with c_info:
+                            st.error(f"Motivo: {inc['motivo']}")
+                            st.metric("Cantidad a dar de Baja", fmt(inc['cantidad']))
+                        
+                        with c_action:
+                            if st.button("✅ DAR DE BAJA", key=f"baja_{inc['id']}", type="primary"):
+                                if resolver_incidencia(inc['id'], 'APROBAR', U_NOMBRE):
+                                    st.success("Stock descontado correctamente."); time.sleep(1); st.rerun()
+                                else:
+                                    st.error("Error: Tal vez ya no hay stock suficiente.")
+                            
+                            if st.button("❌ FALSA ALARMA", key=f"fake_{inc['id']}", type="secondary"):
+                                if resolver_incidencia(inc['id'], 'RECHAZAR', U_NOMBRE):
+                                    st.info("Reporte descartado. Stock intacto."); time.sleep(1); st.rerun()
+            else:
+                st.info("✅ No hay reportes de rotura pendientes.")
