@@ -221,7 +221,7 @@ else:
                     if st.button("VER HISTORIAL", key="b6", type="primary"): navegar_a("Historial")
             else:
                 with st.container(border=True):
-                    tarjeta("📦", "VALIDACIÓN", "Salidas")
+                    tarjeta("📦", "PEDIDOS", "Salidas")
                     if st.button("VALIDAR", key="b6_val", type="primary"): navegar_a("Validacion")
         
         st.write("---")
