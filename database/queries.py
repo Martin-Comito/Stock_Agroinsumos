@@ -394,3 +394,49 @@ def resolver_incidencia(incidencia_id, accion, usuario_admin):
     except Exception as e:
         print(f"Error resolver_incidencia: {e}")
         return False
+
+def editar_detalle_lote(lote_id, nuevo_numero, nueva_cantidad, nueva_fecha, nuevo_gtin, usuario):
+    """
+    Permite corregir datos sensibles de un lote específico.
+    Guarda un registro en el historial para auditoría.
+    """
+    try:
+        # 1. Obtener datos anteriores para el historial
+        old = supabase.table("lotes_stock").select("*").eq("id", lote_id).single().execute()
+        if not old.data: return False
+        old_data = old.data
+
+        # 2. Actualizar el lote
+        supabase.table("lotes_stock").update({
+            "numero_lote": nuevo_numero.strip().upper(),
+            "cantidad_actual": nueva_cantidad,
+            "fecha_vencimiento": str(nueva_fecha),
+            "gtin_codigo": nuevo_gtin.strip().upper(),
+            "ultima_actualizacion": ahora_arg()
+        }).eq("id", lote_id).execute()
+
+        # 3. Registrar auditoría 
+        cambios = []
+        if old_data['cantidad_actual'] != nueva_cantidad: cambios.append(f"Cant: {old_data['cantidad_actual']}->{nueva_cantidad}")
+        if old_data['numero_lote'] != nuevo_numero: cambios.append(f"Lote: {old_data['numero_lote']}->{nuevo_numero}")
+        if str(old_data['fecha_vencimiento']) != str(nueva_fecha): cambios.append(f"Venc: {old_data['fecha_vencimiento']}->{nueva_fecha}")
+        
+        obs = f"CORRECCIÓN MANUAL DATOS: {', '.join(cambios)}"
+
+        supabase.table("historial_movimientos").insert({
+            "producto_id": old_data['producto_id'],
+            "lote_id": lote_id,
+            "tipo_movimiento": "CORRECCION_DATOS",
+            "cantidad_afectada": 0, 
+            "origen_destino": "PANEL ADMIN",
+            "usuario_operador": usuario,
+            "estado_confirmacion": "TERMINADO",
+            "observaciones": obs,
+            "fecha_hora": ahora_arg(),
+            "sucursal_id": old_data['sucursal_id']
+        }).execute()
+
+        return True
+    except Exception as e:
+        print(f"Error editar_detalle_lote: {e}")
+        return False
