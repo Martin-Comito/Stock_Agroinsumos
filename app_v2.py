@@ -17,6 +17,21 @@ from database.queries import (
 
 st.set_page_config(page_title="AgroCheck Pro V2", page_icon="🚜", layout="wide", initial_sidebar_state="collapsed")
 
+# FUNCIONES DE AYUDA (HELPER FUNCTIONS)
+def fmt(num): 
+    """Formatea números quitando decimales .0 si no son necesarios"""
+    try:
+        return f"{float(num):g}"
+    except:
+        return str(num)
+
+def tarjeta(icono, titulo, desc): 
+    st.markdown(f"""<span class="card-icon">{icono}</span><span class="card-title">{titulo}</span><span class="card-desc">{desc}</span>""", unsafe_allow_html=True)
+
+def navegar_a(v): 
+    st.session_state.vista = v
+    st.rerun()
+
 # CSS 
 st.markdown("""
     <style>
@@ -81,10 +96,6 @@ if st.session_state.usuario_id is None and not st.session_state.logout_triggered
                 st.session_state.usuario_rol = user_data.get('rol', 'OPERARIO').upper()
                 st.rerun()
         except: pass
-
-def navegar_a(v): st.session_state.vista = v; st.rerun()
-def tarjeta(icono, titulo, desc): st.markdown(f"""<span class="card-icon">{icono}</span><span class="card-title">{titulo}</span><span class="card-desc">{desc}</span>""", unsafe_allow_html=True)
-def fmt(num): return f"{float(num):g}"
 
 # HELPER: CALCULADORA UNIFICADA
 def calculadora_stock(key_prefix):
@@ -203,7 +214,7 @@ else:
                     tarjeta("📝", "ÓRDENES", "Pedidos")
                     if st.button("CREAR ORDEN", key="b2_op", type="primary"): navegar_a("Ordenes")
             with c3:
-                # PEDIDOS (VALIDACIÓN)
+                # PEDIDOS 
                 with st.container(border=True):
                     tarjeta("📦", "PEDIDOS", "Salidas")
                     if st.button("VALIDAR", key="b3_op", type="primary"): navegar_a("Validacion")
@@ -370,8 +381,6 @@ else:
                     
                     c1, c2 = st.columns(2)
                     l_real = c1.text_input("Confirmar Lote Físico", key=f"lr_{item['id']}").strip().upper()
-                    
-                    # CORRECCION IMPORTANTE: Definir l_esp fuera del botón para evitar NameError
                     l_esp = lote_txt.strip().upper() 
                     
                     st.caption("Validar Cantidad Real:")
@@ -408,6 +417,7 @@ else:
         if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
         
         filtro = st.text_input("🔍 Buscar...").strip().upper()
+        # PESTAÑA 4: Historial de Movimientos (Para Operario)
         tab1, tab2, tab3, tab4 = st.tabs(["📋 Listado General", "🚨 Reportar Rotura/Incidencia", "🗑️ Baja Uso Interno", "📜 Historial Movimientos"])
 
         # TAB 1: LISTADO
@@ -436,7 +446,7 @@ else:
                             "ESTADO": est, 
                             "VENC": venc_str
                         })
-                st.dataframe(pd.DataFrame(data), use_container_width=True)
+                st.dataframe(pd.DataFrame(data), width="stretch")
             else: st.info("Sin stock.")
 
         # TAB 2: INCIDENCIA / ROTURA 
@@ -524,7 +534,7 @@ else:
                         "MOVIMIENTO": x['tipo_movimiento'],
                         "CANT": fmt(x['cantidad_afectada'])
                     })
-                st.dataframe(pd.DataFrame(data_hist), use_container_width=True)
+                st.dataframe(pd.DataFrame(data_hist), width="stretch")
             else:
                 st.info("No hay movimientos recientes.")
 
@@ -629,7 +639,7 @@ else:
             
             df = pd.DataFrame(flat_data)
             if busqueda: df = df[df.apply(lambda row: row.astype(str).str.contains(busqueda, case=False).any(), axis=1)]
-            st.dataframe(df.drop(columns=["ID", "RAW_DATA"]), use_container_width=True)
+            st.dataframe(df.drop(columns=["ID", "RAW_DATA"]), width="stretch")
         else: st.info("Historial vacío.")
 
     # VISTA: RECONTEO (CON FILTRO DE TIEMPO)
@@ -689,7 +699,7 @@ else:
                         if lotes.data:
                             l_opts = {f"Lote: {l['numero_lote']} | Ubic: {l['ubicaciones_internas']['nombre_sector']}": l for l in lotes.data}
                             l_sel = st.selectbox("Seleccionar Lote Físico", list(l_opts.keys()))
-                            dato_l = l_opts[l_sel]
+                            dato_lote = l_opts[l_sel]
                             
                             st.write("---")
                             st.info(f"💾 Stock en Sistema: **{fmt(dato_lote['cantidad_actual'])}**")
@@ -742,7 +752,7 @@ else:
             else:
                 st.info("No tienes reconteos pendientes de aprobación.")
 
-    # VISTA: APROBACIONES (SOLO ADMIN) - MODIFICADA PARA INCIDENCIAS
+    # VISTA: APROBACIONES (SOLO ADMIN) 
     elif st.session_state.vista == "Aprobaciones":
         if U_ROL != 'ADMIN': navegar_a("Menu Principal")
         
@@ -750,7 +760,7 @@ else:
         c_h.header("👮 Auditoría y Aprobaciones")
         if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
 
-        tab_ajustes, tab_roturas = st.tabs(["Ajustes de Inventario", "Bajas por Rotura"])
+        tab_ajustes, tab_roturas = st.tabs(["📊 Ajustes de Inventario", "Bajas por Rotura"])
 
         # TAB 1: AJUSTES DE INVENTARIO 
         with tab_ajustes:
