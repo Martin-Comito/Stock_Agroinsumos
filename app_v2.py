@@ -46,35 +46,10 @@ st.markdown("""
     
     /* --- AJUSTE AGRESIVO PARA CELULARES --- */
     @media only screen and (max-width: 768px) {
-        
-        /* 1. Centrar texto dentro de las tarjetas */
-        div[data-testid="stVerticalBlockBorderWrapper"] {
-            text-align: center !important;
-            align-items: center !important;
-        }
-        
-        /* 2. Forzar alineación de iconos y títulos */
-        .card-icon, .card-title, .card-desc {
-            margin-left: auto !important;
-            margin-right: auto !important;
-            text-align: center !important;
-            display: block !important;
-        }
-
-        /* 3. BOTONES EN MÓVIL: ANCHO TOTAL Y CENTRADOS */
-        div[data-testid="stVerticalBlockBorderWrapper"] button {
-            width: 100% !important;
-            display: block !important;
-            margin-left: auto !important;
-            margin-right: auto !important;
-        }
-        
-        /* 4. Ajuste del contenedor principal del botón */
-        .stButton {
-            width: 100% !important;
-            display: flex !important;
-            justify-content: center !important;
-        }
+        div[data-testid="stVerticalBlockBorderWrapper"] { text-align: center !important; align-items: center !important; }
+        .card-icon, .card-title, .card-desc { margin-left: auto !important; margin-right: auto !important; text-align: center !important; display: block !important; }
+        div[data-testid="stVerticalBlockBorderWrapper"] button { width: 100% !important; display: block !important; margin-left: auto !important; margin-right: auto !important; }
+        .stButton { width: 100% !important; display: flex !important; justify-content: center !important; }
     }
     </style>
     """, unsafe_allow_html=True)
@@ -181,49 +156,72 @@ else:
         st.subheader(f"Depósito: {U_SUCURSAL} | {fecha_arg}")
         st.write("---")
         
-        # FILA 1: Común para todos
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            with st.container(border=True):
-                tarjeta("📥", "INGRESOS", "Alta")
-                if st.button("INGRESAR", key="b1", type="primary"): navegar_a("Ingresos")
-        with c2:
-            with st.container(border=True):
-                tarjeta("📝", "ÓRDENES", "Pedidos")
-                if st.button("CREAR ORDEN", key="b2", type="primary"): navegar_a("Ordenes")
-        with c3:
-            with st.container(border=True):
-                tarjeta("🔍", "RECONTEO", "Control")
-                if st.button("CONTAR", key="b_recount", type="primary"): navegar_a("Reconteo")
+        if U_ROL == 'ADMIN':
+            # MENU ADMIN (7 SECCIONES)
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                with st.container(border=True):
+                    tarjeta("📥", "INGRESOS", "Alta")
+                    if st.button("INGRESAR", key="b1", type="primary"): navegar_a("Ingresos")
+            with c2:
+                with st.container(border=True):
+                    tarjeta("📝", "ÓRDENES", "Pedidos")
+                    if st.button("CREAR ORDEN", key="b2", type="primary"): navegar_a("Ordenes")
+            with c3:
+                with st.container(border=True):
+                    tarjeta("📦", "PEDIDOS", "Validar")
+                    if st.button("VALIDAR", key="b3", type="primary"): navegar_a("Validacion")
+            
+            st.write("")
+            c4, c5, c6, c7 = st.columns(4)
+            with c4:
+                with st.container(border=True):
+                    tarjeta("🔍", "RECONTEO", "Control")
+                    if st.button("CONTAR", key="b4", type="primary"): navegar_a("Reconteo")
+            with c5:
+                with st.container(border=True):
+                    tarjeta("📊", "STOCK", "Ver")
+                    if st.button("VER STOCK", key="b5", type="primary"): navegar_a("Stock")
+            with c6:
+                with st.container(border=True):
+                    tarjeta("📜", "HISTORIAL", "Logs")
+                    if st.button("HISTORIAL", key="b6", type="primary"): navegar_a("Historial")
+            with c7:
+                with st.container(border=True):
+                    tarjeta("👮", "AUDITORÍA", "Aprobar")
+                    if st.button("AUDITAR", key="b7", type="secondary"): navegar_a("Aprobaciones")
 
-        st.write("")
-        c4, c5, c6 = st.columns(3)
-        with c4:
-            with st.container(border=True):
-                tarjeta("📊", "STOCK", "Semáforo")
-                if st.button("VER STOCK", key="b4", type="primary"): navegar_a("Stock")
-        
-        # FILA 2: Diferenciada por ROL
-        with c5:
-            # Si es ADMIN ve "Aprobaciones", si es Depósito ve "Validación"
-            if U_ROL == 'ADMIN':
+        else:
+            # MENU OPERARIO 
+            c1, c2, c3 = st.columns(3)
+            with c1:
                 with st.container(border=True):
-                    tarjeta("👮", "APROBAR", "Auditoría")
-                    if st.button("AUDITAR", key="b5_admin", type="secondary"): navegar_a("Aprobaciones")
-            else:
+                    tarjeta("📥", "INGRESOS", "Alta")
+                    if st.button("INGRESAR", key="b1_op", type="primary"): navegar_a("Ingresos")
+            with c2:
                 with st.container(border=True):
-                    tarjeta("🏗️", "ZAMPING", "Mover")
-                    if st.button("REUBICAR", key="b5_zamp", type="primary"): navegar_a("Zamping")
-
-        with c6:
-            if U_ROL == 'ADMIN':
-                with st.container(border=True):
-                    tarjeta("📜", "HISTORIAL", "Auditoría")
-                    if st.button("VER HISTORIAL", key="b6", type="primary"): navegar_a("Historial")
-            else:
+                    tarjeta("📝", "ÓRDENES", "Pedidos")
+                    if st.button("CREAR ORDEN", key="b2_op", type="primary"): navegar_a("Ordenes")
+            with c3:
+                # PEDIDOS (VALIDACIÓN)
                 with st.container(border=True):
                     tarjeta("📦", "PEDIDOS", "Salidas")
-                    if st.button("VALIDAR", key="b6_val", type="primary"): navegar_a("Validacion")
+                    if st.button("VALIDAR", key="b3_op", type="primary"): navegar_a("Validacion")
+
+            st.write("")
+            c4, c5, c6 = st.columns(3)
+            with c4:
+                with st.container(border=True):
+                    tarjeta("🔍", "RECONTEO", "Control")
+                    if st.button("CONTAR", key="b4_op", type="primary"): navegar_a("Reconteo")
+            with c5:
+                with st.container(border=True):
+                    tarjeta("📊", "STOCK", "Semáforo")
+                    if st.button("VER STOCK", key="b5_op", type="primary"): navegar_a("Stock")
+            with c6:
+                with st.container(border=True):
+                    tarjeta("🏗️", "ZAMPING", "Mover")
+                    if st.button("REUBICAR", key="b6_op", type="primary"): navegar_a("Zamping")
         
         st.write("---")
         cq, _ = st.columns([1,5])
@@ -372,7 +370,9 @@ else:
                     
                     c1, c2 = st.columns(2)
                     l_real = c1.text_input("Confirmar Lote Físico", key=f"lr_{item['id']}").strip().upper()
-                    l_esp = lote_txt.strip().upper() # <--- CORREGIDO: Definido fuera del botón
+                    
+                    # CORRECCION IMPORTANTE: Definir l_esp fuera del botón para evitar NameError
+                    l_esp = lote_txt.strip().upper() 
                     
                     st.caption("Validar Cantidad Real:")
                     total_real_calc, b, u = calculadora_stock(f"val_{item['id']}")
@@ -408,7 +408,8 @@ else:
         if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
         
         filtro = st.text_input("🔍 Buscar...").strip().upper()
-        tab1, tab2, tab3 = st.tabs(["📋 Listado General", "🚨 Reportar Rotura/Incidencia", "🗑️ Baja Uso Interno"])
+        # AGREGADA PESTAÑA 4: Historial de Movimientos (Para Operario)
+        tab1, tab2, tab3, tab4 = st.tabs(["📋 Listado General", "🚨 Reportar Rotura/Incidencia", "🗑️ Baja Uso Interno", "📜 Historial Movimientos"])
 
         # TAB 1: LISTADO
         with tab1:
@@ -439,10 +440,9 @@ else:
                 st.dataframe(pd.DataFrame(data), use_container_width=True)
             else: st.info("Sin stock.")
 
-        # TAB 2: INCIDENCIA / ROTURA (MODIFICADO)
+        # TAB 2: INCIDENCIA / ROTURA
         with tab2:
             st.caption("⚠️ Reportar mercadería rota o pinchada (No afecta stock hasta aprobación del Admin).")
-            # Filtramos lotes con stock > 0
             lotes_sanos = supabase.table("lotes_stock").select("id, numero_lote, cantidad_actual, productos(nombre_comercial)")\
                 .eq("sucursal_id", U_SUCURSAL).gt("cantidad_actual", 0).execute()
             
@@ -452,17 +452,28 @@ else:
                 dato_sano = opts_sanos[sel_sano]
                 
                 c1, c2 = st.columns(2)
-                # Input de cantidad
                 cant_rotura = c1.number_input("Cantidad Rota/Pinchada", min_value=0.0, max_value=float(dato_sano['cantidad_actual']), step=1.0)
-                # Input de motivo
-                motivo_incidencia = c2.selectbox("Motivo", ["ROTO", "PINCHADO", "VENCIDO", "HUMEDAD", "OTRO"])
+                
+                # LOGICA PARA "OTROS"
+                motivo_preliminar = c2.selectbox("Motivo", ["ROTO", "PINCHADO", "VENCIDO", "HUMEDAD", "OTROS"])
+                motivo_final_input = ""
+                if motivo_preliminar == "OTROS":
+                    motivo_final_input = c2.text_input("Especifique el motivo:").strip().upper()
                 
                 if st.button("🚨 REPORTAR INCIDENCIA", type="primary"):
+                    # Determinar motivo final
+                    motivo_a_guardar = motivo_preliminar
+                    if motivo_preliminar == "OTROS":
+                        if not motivo_final_input:
+                            st.error("Debe especificar el motivo.")
+                            st.stop()
+                        motivo_a_guardar = f"OTROS: {motivo_final_input}"
+
                     if cant_rotura > 0:
-                        if registrar_incidencia(dato_sano['id'], cant_rotura, motivo_incidencia, U_NOMBRE, U_SUCURSAL):
-                            st.success("✅ Reporte enviado al Administrador. El stock físico se mantiene igual por ahora."); 
+                        if registrar_incidencia(dato_sano['id'], cant_rotura, motivo_a_guardar, U_NOMBRE, U_SUCURSAL):
+                            st.success("✅ Reporte enviado al Administrador."); 
                             time.sleep(2); st.rerun()
-                        else: st.error("Error al enviar el reporte.")
+                        else: st.error("Error al enviar el reporte. Verifique conexión.")
                     else:
                         st.warning("La cantidad debe ser mayor a 0.")
             else: st.info("No hay stock disponible para reportar.")
@@ -488,6 +499,35 @@ else:
                             st.success("✅ Baja realizada correctamente."); time.sleep(1.5); st.rerun()
                     else: st.error("Ingrese cantidad y motivo.")
             else: st.info("No hay mercadería en Guarda.")
+
+        # TAB 4: HISTORIAL 
+        with tab4:
+            st.subheader("📜 Últimos Movimientos")
+            h_op = supabase.table("historial_movimientos").select("fecha_hora, tipo_movimiento, cantidad_afectada, productos(nombre_comercial), lotes_stock(numero_lote)")\
+                .eq("sucursal_id", U_SUCURSAL).order("fecha_hora", desc=True).limit(50).execute()
+            
+            if h_op.data:
+                data_hist = []
+                arg_tz = pytz.timezone('America/Argentina/Buenos_Aires')
+                for x in h_op.data:
+                    try:
+                        dt_utc = datetime.fromisoformat(x['fecha_hora'].replace('Z', '+00:00'))
+                        fecha_str = dt_utc.astimezone(arg_tz).strftime('%d/%m %H:%M')
+                    except: fecha_str = x['fecha_hora']
+                    
+                    prod_nom = x['productos']['nombre_comercial'] if x['productos'] else "Desconocido"
+                    lote_nom = x['lotes_stock']['numero_lote'] if x['lotes_stock'] else "-"
+                    
+                    data_hist.append({
+                        "FECHA": fecha_str,
+                        "PRODUCTO": prod_nom,
+                        "LOTE": lote_nom,
+                        "MOVIMIENTO": x['tipo_movimiento'],
+                        "CANT": fmt(x['cantidad_afectada'])
+                    })
+                st.dataframe(pd.DataFrame(data_hist), use_container_width=True)
+            else:
+                st.info("No hay movimientos recientes.")
 
     # ZAMPING
     elif st.session_state.vista == "Zamping":
@@ -669,7 +709,7 @@ else:
             else:
                 st.info("No tienes reconteos pendientes de aprobación.")
 
-    # VISTA: APROBACIONES (SOLO ADMIN) - MODIFICADA PARA INCIDENCIAS
+    # VISTA: APROBACIONES 
     elif st.session_state.vista == "Aprobaciones":
         if U_ROL != 'ADMIN': navegar_a("Menu Principal")
         
@@ -677,9 +717,9 @@ else:
         c_h.header("👮 Auditoría y Aprobaciones")
         if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
 
-        tab_ajustes, tab_roturas = st.tabs(["📊 Ajustes de Inventario", "💔 Bajas por Rotura"])
+        tab_ajustes, tab_roturas = st.tabs(["Ajustes de Inventario", "Bajas por Rotura"])
 
-        # --- TAB 1: AJUSTES DE INVENTARIO (Tu código existente) ---
+        # TAB 1: AJUSTES DE INVENTARIO 
         with tab_ajustes:
             pendientes = supabase.table("reconteos").select("*, productos(nombre_comercial), lotes_stock(numero_lote)")\
                 .eq("sucursal_id", U_SUCURSAL).eq("estado", "PENDIENTE").order("created_at").execute()
@@ -706,7 +746,7 @@ else:
             else:
                 st.info("✅ No hay ajustes de conteo pendientes.")
 
-        # --- TAB 2: GESTIÓN DE INCIDENCIAS (NUEVO) ---
+        # TAB 2: GESTIÓN DE INCIDENCIAS
         with tab_roturas:
             incidencias = supabase.table("incidencias").select("*, lotes_stock(numero_lote, productos(nombre_comercial))")\
                 .eq("sucursal_id", U_SUCURSAL).eq("estado", "PENDIENTE").execute()
