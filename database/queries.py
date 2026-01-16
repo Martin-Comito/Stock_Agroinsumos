@@ -155,63 +155,8 @@ def corregir_movimiento(movimiento_id, lote_id, nuevo_lote, nueva_cantidad, nuev
     except: return False
 
 def mover_a_guarda(lote_origen_id, cantidad_rotura, usuario):
-    try:
-        origen = supabase.table("lotes_stock").select("*").eq("id", lote_origen_id).execute()
-        if not origen.data: return False
-        lote_data = origen.data[0]
-        
-        cant_actual = float(lote_data['cantidad_actual'])
-        if cantidad_rotura > cant_actual: return False 
 
-        supabase.table("lotes_stock").update({
-            "cantidad_actual": cant_actual - cantidad_rotura,
-            "ultima_actualizacion": ahora_arg()
-        }).eq("id", lote_origen_id).execute()
-
-        existe_guarda = supabase.table("lotes_stock").select("*")\
-            .eq("producto_id", lote_data['producto_id'])\
-            .eq("numero_lote", lote_data['numero_lote'])\
-            .eq("sucursal_id", lote_data['sucursal_id'])\
-            .eq("estado_calidad", "GUARDA").execute()
-
-        lote_guarda_id = None
-
-        if existe_guarda.data:
-            lote_guarda_id = existe_guarda.data[0]['id']
-            nueva_cant_guarda = float(existe_guarda.data[0]['cantidad_actual']) + cantidad_rotura
-            supabase.table("lotes_stock").update({
-                "cantidad_actual": nueva_cant_guarda,
-                "ultima_actualizacion": ahora_arg()
-            }).eq("id", lote_guarda_id).execute()
-        else:
-            nuevo_lote = lote_data.copy()
-            del nuevo_lote['id'] 
-            del nuevo_lote['created_at'] 
-            nuevo_lote['cantidad_actual'] = cantidad_rotura
-            nuevo_lote['estado_calidad'] = "GUARDA"
-            nuevo_lote['ultima_actualizacion'] = ahora_arg()
-            
-            res = supabase.table("lotes_stock").insert(nuevo_lote).execute()
-            if res.data: lote_guarda_id = res.data[0]['id']
-
-        if lote_guarda_id:
-            supabase.table("historial_movimientos").insert({
-                "producto_id": lote_data['producto_id'],
-                "lote_id": lote_guarda_id,
-                "tipo_movimiento": "ROTURA_A_GUARDA",
-                "cantidad_afectada": cantidad_rotura, 
-                "origen_destino": "MOVIMIENTO INTERNO",
-                "usuario_operador": usuario,
-                "estado_confirmacion": "TERMINADO",
-                "observaciones": f"Rotura reportada desde lote {lote_data['numero_lote']}",
-                "fecha_hora": ahora_arg(),
-                "sucursal_id": lote_data['sucursal_id']
-            }).execute()
-            return True
-        return False
-    except Exception as e:
-        print(e)
-        return False
+    return False 
 
 def baja_uso_interno(lote_guarda_id, cantidad, motivo, usuario):
     try:
@@ -330,7 +275,7 @@ def obtener_ids_productos_con_movimiento(sucursal, dias_atras):
         return []
     except: return []
 
-#  FUNCIONES PARA INCIDENCIAS (ROTURAS DIRECTAS A GUARDA) 
+# FUNCIONES PARA INCIDENCIAS (ROTURAS DIRECTAS A GUARDA)
 
 def registrar_incidencia(lote_id, cantidad, motivo, usuario, sucursal):
     """
@@ -351,10 +296,10 @@ def registrar_incidencia(lote_id, cantidad, motivo, usuario, sucursal):
             "ultima_actualizacion": ahora_arg()
         }).eq("id", lote_id).execute()
 
-        # 3. Buscar si ya existe ese lote en GUARDA
         existe_guarda = supabase.table("lotes_stock").select("*")\
             .eq("producto_id", lote_data['producto_id'])\
             .eq("numero_lote", lote_data['numero_lote'])\
+            .eq("ubicacion_id", lote_data['ubicacion_id'])\
             .eq("sucursal_id", lote_data['sucursal_id'])\
             .eq("estado_calidad", "GUARDA").execute()
 
@@ -370,14 +315,21 @@ def registrar_incidencia(lote_id, cantidad, motivo, usuario, sucursal):
             }).eq("id", lote_guarda_id).execute()
         else:
             # Si no existe, crea el registro en GUARDA
-            nuevo_lote = lote_data.copy()
-            del nuevo_lote['id'] 
-            del nuevo_lote['created_at'] 
-            nuevo_lote['cantidad_actual'] = cantidad
-            nuevo_lote['estado_calidad'] = "GUARDA"
-            nuevo_lote['ultima_actualizacion'] = ahora_arg()
+            # CONSTRUIMOS EL DICCIONARIO MANUALMENTE PARA EVITAR ERRORES DE LLAVES
+            datos_guarda = {
+                "producto_id": lote_data['producto_id'],
+                "ubicacion_id": lote_data['ubicacion_id'],
+                "numero_lote": lote_data['numero_lote'],
+                "fecha_vencimiento": lote_data['fecha_vencimiento'],
+                "senasa_codigo": lote_data.get('senasa_codigo'),
+                "gtin_codigo": lote_data.get('gtin_codigo'),
+                "cantidad_actual": cantidad,
+                "estado_calidad": "GUARDA",
+                "sucursal_id": lote_data['sucursal_id'],
+                "ultima_actualizacion": ahora_arg()
+            }
             
-            res = supabase.table("lotes_stock").insert(nuevo_lote).execute()
+            res = supabase.table("lotes_stock").insert(datos_guarda).execute()
             if res.data: lote_guarda_id = res.data[0]['id']
 
         # 4. Registrar en historial
@@ -400,7 +352,7 @@ def registrar_incidencia(lote_id, cantidad, motivo, usuario, sucursal):
         return False
 
 def resolver_incidencia(incidencia_id, accion, usuario_admin):
-    return True # Stub
+    return True 
 
 def editar_detalle_lote(lote_id, nuevo_numero, nueva_cantidad, nueva_fecha, nuevo_gtin, nuevo_senasa, usuario):
     """
