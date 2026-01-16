@@ -544,25 +544,72 @@ else:
             if st.button("MOVER", type="primary"):
                 if mover_pallet(opts[sel], u_map[dest], U_NOMBRE): st.success("✅ Hecho"); st.rerun()
 
-    # HISTORIAL 
+   # HISTORIAL 
     elif st.session_state.vista == "Historial":
         c_h, c_b = st.columns([4, 1])
         c_h.header("📜 Centro de Historial")
         if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
         
-        # Solo Admin puede editar maestro
+        # Solo Admin puede editar
         if U_ROL == 'ADMIN':
-            with st.expander("🛠️ Gestión de Productos (Maestro)"):
+            
+            # SECCION 1: EDICIÓN MAESTRO 
+            with st.expander("🛠️ Gestión de Productos (Maestro - Nombres)"):
                 all_prods = supabase.table("productos").select("id, nombre_comercial, categoria").order("nombre_comercial").execute()
                 if all_prods.data:
                     p_dict = {p['nombre_comercial']: p for p in all_prods.data}
                     p_sel_edit = st.selectbox("Seleccionar Producto", list(p_dict.keys()), key="master_edit_sel")
+                    
                     ce1, ce2 = st.columns(2)
                     new_name = ce1.text_input("Nuevo Nombre", value=p_sel_edit).strip().upper()
                     new_cat = ce2.text_input("Nueva Categoría", value=p_dict[p_sel_edit].get('categoria', '') or "").strip().upper()
+                    
                     if st.button("GUARDAR CAMBIOS EN MAESTRO", type="primary"):
-                        if editar_producto(p_dict[p_sel_edit]['id'], new_name, new_cat): st.success(f"✅ Producto actualizado"); st.rerun()
-        
+                        if editar_producto(p_dict[p_sel_edit]['id'], new_name, new_cat): 
+                            st.success(f"✅ Producto actualizado"); time.sleep(1); st.rerun()
+
+            # SECCION 2: EDICIÓN DE LOTES (Fechas, Cantidades, GTIN) 
+            with st.expander("✏️ Corrección de Lotes (Vencimientos, Cantidad, GTIN)"):
+                st.info("⚠️ Use esto para corregir errores de carga. Los cambios quedan registrados.")
+                
+                # 1. Seleccionar Producto
+                if all_prods.data:
+                    p_lote_dict = {p['nombre_comercial']: p['id'] for p in all_prods.data}
+                    p_sel_lote = st.selectbox("1. Buscar Producto", list(p_lote_dict.keys()), key="lote_edit_prod")
+                    
+                    # 2. Seleccionar Lote Específico
+                    lotes_disp = supabase.table("lotes_stock").select("*").eq("producto_id", p_lote_dict[p_sel_lote]).eq("sucursal_id", U_SUCURSAL).execute()
+                    
+                    if lotes_disp.data:
+                        l_dict = {f"Lote: {l['numero_lote']} | Venc: {l['fecha_vencimiento']} | Cant: {l['cantidad_actual']}": l for l in lotes_disp.data}
+                        l_sel_str = st.selectbox("2. Seleccionar Lote a Corregir", list(l_dict.keys()), key="lote_edit_lote")
+                        dato_l = l_dict[l_sel_str]
+
+                        st.write("---")
+                        # Formulario de Edición
+                        with st.form("form_edit_lote"):
+                            c1, c2 = st.columns(2)
+                            new_nro_lote = c1.text_input("Número de Lote", value=dato_l['numero_lote']).strip().upper()
+                            new_cant = c2.number_input("Cantidad Real", value=float(dato_l['cantidad_actual']), step=1.0)
+                            
+                            c3, c4 = st.columns(2)
+                            try:
+                                v_date = datetime.strptime(dato_l['fecha_vencimiento'], '%Y-%m-%d').date()
+                            except:
+                                v_date = datetime.now().date()
+                                
+                            new_venc = c3.date_input("Fecha Vencimiento", value=v_date)
+                            new_gtin = c4.text_input("GTIN", value=dato_l.get('gtin_codigo','') or "").strip().upper()
+
+                            if st.form_submit_button("💾 GUARDAR CORRECCIÓN DE LOTE", type="primary"):
+                                from database.queries import editar_detalle_lote
+                                if editar_detalle_lote(dato_l['id'], new_nro_lote, new_cant, new_venc, new_gtin, U_NOMBRE):
+                                    st.success("✅ Datos del lote corregidos exitosamente."); time.sleep(1.5); st.rerun()
+                                else:
+                                    st.error("Error al actualizar.")
+                    else:
+                        st.warning("No hay lotes registrados para este producto.")
+
         st.write("---")
         busqueda = st.text_input("🔍 Buscar en Historial", placeholder="Producto, Lote...").strip().upper()
         h = supabase.table("historial_movimientos").select("id, fecha_hora, tipo_movimiento, cantidad_afectada, origen_destino, observaciones, lote_id, productos(nombre_comercial), lotes_stock(numero_lote, fecha_vencimiento, senasa_codigo, gtin_codigo)").eq("sucursal_id", U_SUCURSAL).order("fecha_hora", desc=True).limit(100).execute()
@@ -574,30 +621,16 @@ else:
                     dt_utc = datetime.fromisoformat(x['fecha_hora'].replace('Z', '+00:00'))
                     fecha_str = dt_utc.astimezone(arg_tz).strftime('%d/%m %H:%M')
                 except: fecha_str = x['fecha_hora']
-                flat_data.append({"ID": x['id'], "FECHA": fecha_str, "PRODUCTO": x['productos']['nombre_comercial'], "MOVIMIENTO": x['tipo_movimiento'], "CANTIDAD": fmt(x['cantidad_afectada']), "LOTE": x['lotes_stock']['numero_lote'] if x['lotes_stock'] else "N/A", "RAW_DATA": x})
+                
+                prod_name = x['productos']['nombre_comercial'] if x['productos'] else "Borrado"
+                lote_name = x['lotes_stock']['numero_lote'] if x['lotes_stock'] else "N/A"
+
+                flat_data.append({"ID": x['id'], "FECHA": fecha_str, "PRODUCTO": prod_name, "MOVIMIENTO": x['tipo_movimiento'], "CANTIDAD": fmt(x['cantidad_afectada']), "LOTE": lote_name, "OBSERVACIONES": x.get('observaciones',''), "RAW_DATA": x})
+            
             df = pd.DataFrame(flat_data)
             if busqueda: df = df[df.apply(lambda row: row.astype(str).str.contains(busqueda, case=False).any(), axis=1)]
             st.dataframe(df.drop(columns=["ID", "RAW_DATA"]), use_container_width=True)
-            
-            # Solo Admin puede corregir transacciones
-            if U_ROL == 'ADMIN':
-                st.write("---")
-                st.subheader("✏️ Corregir Transacción")
-                opciones = {f"{r['PRODUCTO']} | Lote: {r['LOTE']} | {r['CANTIDAD']}": r['RAW_DATA'] for index, r in df.iterrows() if r['MOVIMIENTO'] == 'INGRESO'}
-                if opciones:
-                    seleccion = st.selectbox("Seleccionar Movimiento", list(opciones.keys()))
-                    dato = opciones[seleccion]
-                    with st.form("form_correccion_hist"):
-                        c1, c2 = st.columns(2)
-                        lote_actual = dato['lotes_stock']['numero_lote'] if dato['lotes_stock'] else ""
-                        nuevo_lote = c1.text_input("Corregir Lote", value=lote_actual).strip().upper()
-                        cant_actual = float(dato['cantidad_afectada'])
-                        nueva_cant = c2.number_input("Corregir Cantidad Real", value=cant_actual)
-                        if st.form_submit_button("GUARDAR CORRECCIÓN TOTAL", type="primary"):
-                            if corregir_movimiento(dato['id'], dato['lote_id'], nuevo_lote, nueva_cant, dato['lotes_stock']['fecha_vencimiento'], dato['lotes_stock']['senasa_codigo'], dato['lotes_stock']['gtin_codigo'], U_NOMBRE): st.success("✅ Todo actualizado."); st.rerun()
-                else: st.info("No hay ingresos editables.")
         else: st.info("Historial vacío.")
-
 
     # VISTA: RECONTEO (CON FILTRO DE TIEMPO)
     elif st.session_state.vista == "Reconteo":
