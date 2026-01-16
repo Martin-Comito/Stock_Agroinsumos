@@ -12,7 +12,7 @@ from database.queries import (
     corregir_movimiento, verificar_login, mover_a_guarda, baja_uso_interno,
     registrar_reconteo, editar_reconteo_pendiente, aprobar_ajuste_stock, rechazar_reconteo,
     obtener_ids_productos_con_movimiento,
-    registrar_incidencia, resolver_incidencia
+    registrar_incidencia, resolver_incidencia, editar_detalle_lote
 )
 
 st.set_page_config(page_title="AgroCheck Pro V2", page_icon="🚜", layout="wide", initial_sidebar_state="collapsed")
@@ -192,7 +192,7 @@ else:
                     if st.button("AUDITAR", key="b7", type="secondary"): navegar_a("Aprobaciones")
 
         else:
-            # MENU OPERARIO 
+            # MENU OPERARIO
             c1, c2, c3 = st.columns(3)
             with c1:
                 with st.container(border=True):
@@ -408,7 +408,6 @@ else:
         if c_b.button("VOLVER", type="secondary"): navegar_a("Menu Principal")
         
         filtro = st.text_input("🔍 Buscar...").strip().upper()
-        # AGREGADA PESTAÑA 4: Historial de Movimientos (Para Operario)
         tab1, tab2, tab3, tab4 = st.tabs(["📋 Listado General", "🚨 Reportar Rotura/Incidencia", "🗑️ Baja Uso Interno", "📜 Historial Movimientos"])
 
         # TAB 1: LISTADO
@@ -440,7 +439,7 @@ else:
                 st.dataframe(pd.DataFrame(data), use_container_width=True)
             else: st.info("Sin stock.")
 
-        # TAB 2: INCIDENCIA / ROTURA
+        # TAB 2: INCIDENCIA / ROTURA 
         with tab2:
             st.caption("⚠️ Reportar mercadería rota o pinchada (No afecta stock hasta aprobación del Admin).")
             lotes_sanos = supabase.table("lotes_stock").select("id, numero_lote, cantidad_actual, productos(nombre_comercial)")\
@@ -500,7 +499,7 @@ else:
                     else: st.error("Ingrese cantidad y motivo.")
             else: st.info("No hay mercadería en Guarda.")
 
-        # TAB 4: HISTORIAL 
+        # TAB 4: HISTORIAL
         with tab4:
             st.subheader("📜 Últimos Movimientos")
             h_op = supabase.table("historial_movimientos").select("fecha_hora, tipo_movimiento, cantidad_afectada, productos(nombre_comercial), lotes_stock(numero_lote)")\
@@ -544,7 +543,7 @@ else:
             if st.button("MOVER", type="primary"):
                 if mover_pallet(opts[sel], u_map[dest], U_NOMBRE): st.success("✅ Hecho"); st.rerun()
 
-   # HISTORIAL 
+    # HISTORIAL 
     elif st.session_state.vista == "Historial":
         c_h, c_b = st.columns([4, 1])
         c_h.header("📜 Centro de Historial")
@@ -553,7 +552,7 @@ else:
         # Solo Admin puede editar
         if U_ROL == 'ADMIN':
             
-            # SECCION 1: EDICIÓN MAESTRO 
+            # SECCION 1: EDICIÓN MAESTRO (Nombres, Categorías)
             with st.expander("🛠️ Gestión de Productos (Maestro - Nombres)"):
                 all_prods = supabase.table("productos").select("id, nombre_comercial, categoria").order("nombre_comercial").execute()
                 if all_prods.data:
@@ -568,8 +567,8 @@ else:
                         if editar_producto(p_dict[p_sel_edit]['id'], new_name, new_cat): 
                             st.success(f"✅ Producto actualizado"); time.sleep(1); st.rerun()
 
-            # SECCION 2: EDICIÓN DE LOTES (Fechas, Cantidades, GTIN) 
-            with st.expander("✏️ Corrección de Lotes (Vencimientos, Cantidad, GTIN)"):
+            # SECCION 2: EDICIÓN DE LOTES (Fechas, Cantidades, GTIN, SENASA)
+            with st.expander("✏️ Corrección de Lotes (Vencimientos, Cantidad, GTIN, SENASA)"):
                 st.info("⚠️ Use esto para corregir errores de carga. Los cambios quedan registrados.")
                 
                 # 1. Seleccionar Producto
@@ -592,7 +591,8 @@ else:
                             new_nro_lote = c1.text_input("Número de Lote", value=dato_l['numero_lote']).strip().upper()
                             new_cant = c2.number_input("Cantidad Real", value=float(dato_l['cantidad_actual']), step=1.0)
                             
-                            c3, c4 = st.columns(2)
+                            # Tres columnas para Vencimiento, GTIN y SENASA
+                            c3, c4, c5 = st.columns(3)
                             try:
                                 v_date = datetime.strptime(dato_l['fecha_vencimiento'], '%Y-%m-%d').date()
                             except:
@@ -600,10 +600,10 @@ else:
                                 
                             new_venc = c3.date_input("Fecha Vencimiento", value=v_date)
                             new_gtin = c4.text_input("GTIN", value=dato_l.get('gtin_codigo','') or "").strip().upper()
+                            new_senasa = c5.text_input("SENASA", value=dato_l.get('senasa_codigo','') or "").strip().upper() 
 
                             if st.form_submit_button("💾 GUARDAR CORRECCIÓN DE LOTE", type="primary"):
-                                from database.queries import editar_detalle_lote
-                                if editar_detalle_lote(dato_l['id'], new_nro_lote, new_cant, new_venc, new_gtin, U_NOMBRE):
+                                if editar_detalle_lote(dato_l['id'], new_nro_lote, new_cant, new_venc, new_gtin, new_senasa, U_NOMBRE):
                                     st.success("✅ Datos del lote corregidos exitosamente."); time.sleep(1.5); st.rerun()
                                 else:
                                     st.error("Error al actualizar.")
@@ -689,7 +689,7 @@ else:
                         if lotes.data:
                             l_opts = {f"Lote: {l['numero_lote']} | Ubic: {l['ubicaciones_internas']['nombre_sector']}": l for l in lotes.data}
                             l_sel = st.selectbox("Seleccionar Lote Físico", list(l_opts.keys()))
-                            dato_lote = l_opts[l_sel]
+                            dato_l = l_opts[l_sel]
                             
                             st.write("---")
                             st.info(f"💾 Stock en Sistema: **{fmt(dato_lote['cantidad_actual'])}**")
@@ -742,7 +742,7 @@ else:
             else:
                 st.info("No tienes reconteos pendientes de aprobación.")
 
-    # VISTA: APROBACIONES 
+    # VISTA: APROBACIONES (SOLO ADMIN) - MODIFICADA PARA INCIDENCIAS
     elif st.session_state.vista == "Aprobaciones":
         if U_ROL != 'ADMIN': navegar_a("Menu Principal")
         
