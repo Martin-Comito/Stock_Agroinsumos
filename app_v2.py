@@ -469,7 +469,7 @@ else:
                 if motivo_preliminar == "OTROS":
                     motivo_final_input = c2.text_input("Especifique el motivo:").strip().upper()
                 
-                if st.button("🚨 REPORTAR INCIDENCIA", type="primary"):
+                if st.button("🚨 REPORTAR ROTURA (MOVER A GUARDA)", type="primary"):
                     # Determinar motivo final
                     motivo_a_guardar = motivo_preliminar
                     if motivo_preliminar == "OTROS":
@@ -480,9 +480,9 @@ else:
 
                     if cant_rotura > 0:
                         if registrar_incidencia(dato_sano['id'], cant_rotura, motivo_a_guardar, U_NOMBRE, U_SUCURSAL):
-                            st.success("✅ Reporte enviado al Administrador."); 
+                            st.success(f"✅ Listo. Se movieron {fmt(cant_rotura)} unidades a GUARDA (Stock Reservado)."); 
                             time.sleep(2); st.rerun()
-                        else: st.error("Error al enviar el reporte. Verifique conexión.")
+                        else: st.error("Error al mover la mercadería.")
                     else:
                         st.warning("La cantidad debe ser mayor a 0.")
             else: st.info("No hay stock disponible para reportar.")
