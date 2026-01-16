@@ -395,13 +395,12 @@ def resolver_incidencia(incidencia_id, accion, usuario_admin):
         print(f"Error resolver_incidencia: {e}")
         return False
 
-def editar_detalle_lote(lote_id, nuevo_numero, nueva_cantidad, nueva_fecha, nuevo_gtin, usuario):
+def editar_detalle_lote(lote_id, nuevo_numero, nueva_cantidad, nueva_fecha, nuevo_gtin, nuevo_senasa, usuario):
     """
-    Permite corregir datos sensibles de un lote específico.
-    Guarda un registro en el historial para auditoría.
+    Permite corregir datos sensibles de un lote específico (incluido SENASA).
     """
     try:
-        # 1. Obtener datos anteriores para el historial
+        # 1. Obtener datos anteriores
         old = supabase.table("lotes_stock").select("*").eq("id", lote_id).single().execute()
         if not old.data: return False
         old_data = old.data
@@ -412,22 +411,26 @@ def editar_detalle_lote(lote_id, nuevo_numero, nueva_cantidad, nueva_fecha, nuev
             "cantidad_actual": nueva_cantidad,
             "fecha_vencimiento": str(nueva_fecha),
             "gtin_codigo": nuevo_gtin.strip().upper(),
+            "senasa_codigo": nuevo_senasa.strip().upper(), # <--- AGREGADO
             "ultima_actualizacion": ahora_arg()
         }).eq("id", lote_id).execute()
 
-        # 3. Registrar auditoría 
+        # 3. Registrar auditoría
         cambios = []
         if old_data['cantidad_actual'] != nueva_cantidad: cambios.append(f"Cant: {old_data['cantidad_actual']}->{nueva_cantidad}")
         if old_data['numero_lote'] != nuevo_numero: cambios.append(f"Lote: {old_data['numero_lote']}->{nuevo_numero}")
         if str(old_data['fecha_vencimiento']) != str(nueva_fecha): cambios.append(f"Venc: {old_data['fecha_vencimiento']}->{nueva_fecha}")
-        
-        obs = f"CORRECCIÓN MANUAL DATOS: {', '.join(cambios)}"
+        # Comparación segura para SENASA (por si antes era None)
+        old_senasa = old_data.get('senasa_codigo', '') or ""
+        if old_senasa != nuevo_senasa: cambios.append(f"SENASA: {old_senasa}->{nuevo_senasa}")
+
+        obs = f"CORRECCIÓN MANUAL: {', '.join(cambios)}"
 
         supabase.table("historial_movimientos").insert({
             "producto_id": old_data['producto_id'],
             "lote_id": lote_id,
             "tipo_movimiento": "CORRECCION_DATOS",
-            "cantidad_afectada": 0, 
+            "cantidad_afectada": 0,
             "origen_destino": "PANEL ADMIN",
             "usuario_operador": usuario,
             "estado_confirmacion": "TERMINADO",
