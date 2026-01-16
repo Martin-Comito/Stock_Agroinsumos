@@ -330,97 +330,100 @@ def obtener_ids_productos_con_movimiento(sucursal, dias_atras):
         return []
     except: return []
 
-# --- FUNCIONES PARA INCIDENCIAS (ROTURAS) ---
+#  FUNCIONES PARA INCIDENCIAS (ROTURAS DIRECTAS A GUARDA) 
 
 def registrar_incidencia(lote_id, cantidad, motivo, usuario, sucursal):
-    """Guarda el reporte sin tocar el stock real todavía"""
+    """
+    Mueve la mercadería rota directamente a estado GUARDA.
+    """
     try:
-        data = {
-            "lote_id": lote_id,
-            "cantidad": cantidad,
-            "motivo": motivo,
-            "usuario_solicitante": usuario,
-            "sucursal_id": sucursal,
-            "estado": "PENDIENTE"
-        }
-        supabase.table("incidencias").insert(data).execute()
+        # 1. Obtener datos del lote original (Disponible)
+        origen = supabase.table("lotes_stock").select("*").eq("id", lote_id).single().execute()
+        if not origen.data: return False
+        lote_data = origen.data
+        
+        cant_actual = float(lote_data['cantidad_actual'])
+        if cantidad > cant_actual: return False 
+
+        # 2. Restar del lote original (Disponible)
+        supabase.table("lotes_stock").update({
+            "cantidad_actual": cant_actual - cantidad,
+            "ultima_actualizacion": ahora_arg()
+        }).eq("id", lote_id).execute()
+
+        # 3. Buscar si ya existe ese lote en GUARDA
+        existe_guarda = supabase.table("lotes_stock").select("*")\
+            .eq("producto_id", lote_data['producto_id'])\
+            .eq("numero_lote", lote_data['numero_lote'])\
+            .eq("sucursal_id", lote_data['sucursal_id'])\
+            .eq("estado_calidad", "GUARDA").execute()
+
+        lote_guarda_id = None
+
+        if existe_guarda.data:
+            # Si existe, suma la cantidad
+            lote_guarda_id = existe_guarda.data[0]['id']
+            nueva_cant_guarda = float(existe_guarda.data[0]['cantidad_actual']) + cantidad
+            supabase.table("lotes_stock").update({
+                "cantidad_actual": nueva_cant_guarda,
+                "ultima_actualizacion": ahora_arg()
+            }).eq("id", lote_guarda_id).execute()
+        else:
+            # Si no existe, crea el registro en GUARDA
+            nuevo_lote = lote_data.copy()
+            del nuevo_lote['id'] 
+            del nuevo_lote['created_at'] 
+            nuevo_lote['cantidad_actual'] = cantidad
+            nuevo_lote['estado_calidad'] = "GUARDA"
+            nuevo_lote['ultima_actualizacion'] = ahora_arg()
+            
+            res = supabase.table("lotes_stock").insert(nuevo_lote).execute()
+            if res.data: lote_guarda_id = res.data[0]['id']
+
+        # 4. Registrar en historial
+        supabase.table("historial_movimientos").insert({
+            "producto_id": lote_data['producto_id'],
+            "lote_id": lote_guarda_id if lote_guarda_id else lote_id,
+            "tipo_movimiento": "ROTURA_A_GUARDA",
+            "cantidad_afectada": cantidad, 
+            "origen_destino": "MOVIMIENTO INTERNO",
+            "usuario_operador": usuario,
+            "estado_confirmacion": "TERMINADO",
+            "observaciones": f"Motivo: {motivo}. Movido a GUARDA.",
+            "fecha_hora": ahora_arg(),
+            "sucursal_id": lote_data['sucursal_id']
+        }).execute()
+        
         return True
     except Exception as e:
-        print(f"Error registrar_incidencia: {e}")
+        print(f"Error mover a guarda: {e}")
         return False
 
 def resolver_incidencia(incidencia_id, accion, usuario_admin):
-    """
-    accion: 'APROBAR' (Resta stock real) o 'RECHAZAR' (Solo cierra ticket)
-    """
-    try:
-        res = supabase.table("incidencias").select("*, lotes_stock(cantidad_actual)").eq("id", incidencia_id).single().execute()
-        inc = res.data
-        
-        if not inc: return False
-        
-        if accion == 'RECHAZAR':
-            supabase.table("incidencias").update({"estado": "RECHAZADO"}).eq("id", incidencia_id).execute()
-            return True
-
-        elif accion == 'APROBAR':
-            stock_actual = float(inc['lotes_stock']['cantidad_actual'])
-            a_bajar = float(inc['cantidad'])
-            
-            if stock_actual >= a_bajar:
-                nueva_cantidad = stock_actual - a_bajar
-                
-                # 1. Restar del stock físico
-                supabase.table("lotes_stock").update({"cantidad_actual": nueva_cantidad}).eq("id", inc['lote_id']).execute()
-                
-                # 2. Registrar en historial de movimientos
-                historial = {
-                    "tipo_movimiento": "BAJA POR ROTURA",
-                    "cantidad_afectada": -a_bajar,
-                    "lote_id": inc['lote_id'],
-                    "sucursal_id": inc['sucursal_id'],
-                    "usuario_operador": usuario_admin,
-                    "estado_confirmacion": "TERMINADO",
-                    "fecha_hora": ahora_arg(),
-                    "observaciones": f"Incidencia Aprobada ID {incidencia_id}: {inc['motivo']}"
-                }
-                supabase.table("historial_movimientos").insert(historial).execute()
-                
-                # 3. Cerrar incidencia
-                supabase.table("incidencias").update({"estado": "APROBADO"}).eq("id", incidencia_id).execute()
-                return True
-            else:
-                return False 
-    except Exception as e:
-        print(f"Error resolver_incidencia: {e}")
-        return False
+    return True # Stub
 
 def editar_detalle_lote(lote_id, nuevo_numero, nueva_cantidad, nueva_fecha, nuevo_gtin, nuevo_senasa, usuario):
     """
     Permite corregir datos sensibles de un lote específico (incluido SENASA).
     """
     try:
-        # 1. Obtener datos anteriores
         old = supabase.table("lotes_stock").select("*").eq("id", lote_id).single().execute()
         if not old.data: return False
         old_data = old.data
 
-        # 2. Actualizar el lote
         supabase.table("lotes_stock").update({
             "numero_lote": nuevo_numero.strip().upper(),
             "cantidad_actual": nueva_cantidad,
             "fecha_vencimiento": str(nueva_fecha),
             "gtin_codigo": nuevo_gtin.strip().upper(),
-            "senasa_codigo": nuevo_senasa.strip().upper(), # <--- AGREGADO
+            "senasa_codigo": nuevo_senasa.strip().upper(),
             "ultima_actualizacion": ahora_arg()
         }).eq("id", lote_id).execute()
 
-        # 3. Registrar auditoría
         cambios = []
         if old_data['cantidad_actual'] != nueva_cantidad: cambios.append(f"Cant: {old_data['cantidad_actual']}->{nueva_cantidad}")
         if old_data['numero_lote'] != nuevo_numero: cambios.append(f"Lote: {old_data['numero_lote']}->{nuevo_numero}")
         if str(old_data['fecha_vencimiento']) != str(nueva_fecha): cambios.append(f"Venc: {old_data['fecha_vencimiento']}->{nueva_fecha}")
-        # Comparación segura para SENASA (por si antes era None)
         old_senasa = old_data.get('senasa_codigo', '') or ""
         if old_senasa != nuevo_senasa: cambios.append(f"SENASA: {old_senasa}->{nuevo_senasa}")
 
